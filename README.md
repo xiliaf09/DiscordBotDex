@@ -30,6 +30,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 ### Commandes Clanker
 - `!clankeron` - Active le monitoring des nouveaux tokens Clanker
 - `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
+- `!lastclanker` - Affiche le dernier token déployé sur Clanker
 
 ## Installation
 

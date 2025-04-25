@@ -490,6 +490,36 @@ class ClankerMonitor(commands.Cog):
         self.is_active = False
         await ctx.send("❌ Monitoring Clanker désactivé")
 
+    @commands.command()
+    async def lastclanker(self, ctx):
+        """Fetch and display the latest token from Clanker"""
+        try:
+            # Send initial message
+            status_msg = await ctx.send("🔍 Recherche du dernier token Clanker...")
+            
+            # Fetch latest Clanker deployments
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
+                response.raise_for_status()
+                tokens = response.json()
+
+                if tokens:
+                    # Get the first (latest) token
+                    latest_token = tokens[0]
+                    # Delete the status message
+                    await status_msg.delete()
+                    # Send token notification
+                    await self._send_clanker_notification(latest_token, ctx.channel)
+                else:
+                    await status_msg.edit(content="❌ Aucun token récent trouvé sur Clanker.")
+
+        except Exception as e:
+            logger.error(f"Error fetching latest Clanker token: {e}")
+            if status_msg:
+                await status_msg.edit(content="❌ Erreur lors de la recherche du dernier token Clanker.")
+            else:
+                await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
+
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
