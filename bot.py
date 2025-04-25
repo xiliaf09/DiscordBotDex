@@ -561,21 +561,23 @@ class ClankerMonitor(commands.Cog):
 
     def _should_process_token(self, token_data: Dict) -> bool:
         """Determine if a token should be processed based on filters."""
+        # Log complet des données du token pour le débogage
+        logger.info(f"Processing token data: {json.dumps(token_data, indent=2)}")
+
         # Vérifier si le token a un cast_hash
-        if not token_data.get('cast_hash'):
+        cast_hash = token_data.get('cast_hash')
+        if not cast_hash:
             logger.debug(f"Token {token_data.get('name')} skipped - no cast_hash")
-            return False
+            return True  # On accepte temporairement tous les tokens pour debug
 
         # Vérifier si c'est un tweet ou un cast Warpcast
-        cast_hash = token_data['cast_hash']
-        
-        # Vérifier si c'est un lien Twitter valide
+        # Si c'est un lien Twitter valide
         if 'twitter.com' in cast_hash:
             logger.info(f"Token {token_data.get('name')} has valid Twitter link: {cast_hash}")
             return True
             
         # Vérifier si c'est un cast Warpcast valide (doit être un hash sans http et sans caractères spéciaux)
-        if not cast_hash.startswith('http') and cast_hash.isalnum():
+        if not cast_hash.startswith('http'):
             logger.info(f"Token {token_data.get('name')} has valid Warpcast link: {cast_hash}")
             return True
             
@@ -649,11 +651,11 @@ class ClankerMonitor(commands.Cog):
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
-            # Vérifier si le token doit être traité
-            if not self._should_process_token(token_data):
-                return
+            # Log complet des données du token pour le débogage
+            logger.info(f"Sending notification for token: {json.dumps(token_data, indent=2)}")
 
             tweet_link, warpcast_link = self._get_social_links(token_data)
+            logger.info(f"Generated links - Tweet: {tweet_link}, Warpcast: {warpcast_link}")
             
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
@@ -720,6 +722,8 @@ class ClankerMonitor(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
+            logger.error(f"Token data that caused error: {json.dumps(token_data, indent=2)}")
+            await channel.send("❌ Erreur lors de l'envoi de la notification du token.")
 
     @tasks.loop(seconds=POLL_INTERVAL)
     async def monitor_clanker(self):
