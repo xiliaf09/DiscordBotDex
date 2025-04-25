@@ -545,24 +545,43 @@ class ClankerMonitor(commands.Cog):
 
     def _get_deployment_info(self, token_data: Dict) -> tuple:
         """Extract deployment method and link from token data."""
+        # Log des données complètes du token pour le débogage
+        logger.info(f"Raw token data for deployment info: {json.dumps(token_data, indent=2)}")
+        
         social_context = token_data.get('social_context', '')
+        cast_hash = token_data.get('cast_hash', '')
+        tweet_id = token_data.get('tweet_id', '')
+        
+        logger.info(f"Processing deployment info - Social Context: {social_context}, Cast Hash: {cast_hash}, Tweet ID: {tweet_id}")
+        
         deployment_method = "Interface Clanker"
         social_link = None
 
-        # Vérifier si le lien est un lien Warpcast
-        if 'warpcast.com' in social_context or '/s0lverr/' in social_context:
+        # Vérifier Warpcast en priorité avec le cast_hash
+        if cast_hash:
             deployment_method = "Warpcast"
-            # Si le lien ne commence pas par http, ajouter le préfixe
-            if not social_context.startswith(('http://', 'https://')):
-                social_link = f"https://warpcast.com{social_context if social_context.startswith('/') else '/' + social_context}"
-            else:
-                social_link = social_context
-        # Vérifier si le lien est un lien Twitter
-        elif 'twitter.com' in social_context or 'x.com' in social_context:
+            social_link = f"https://warpcast.com/{cast_hash}"
+            logger.info(f"Detected Warpcast deployment with cast_hash: {cast_hash}")
+        # Vérifier Twitter
+        elif tweet_id:
             deployment_method = "Twitter"
-            social_link = social_context
+            social_link = f"https://twitter.com/i/web/status/{tweet_id}"
+            logger.info(f"Detected Twitter deployment with tweet_id: {tweet_id}")
+        # Fallback sur le social_context
+        elif social_context:
+            if 'warpcast.com' in social_context or '/s0lverr/' in social_context:
+                deployment_method = "Warpcast"
+                if not social_context.startswith(('http://', 'https://')):
+                    social_link = f"https://warpcast.com{social_context if social_context.startswith('/') else '/' + social_context}"
+                else:
+                    social_link = social_context
+                logger.info(f"Detected Warpcast deployment from social_context: {social_context}")
+            elif 'twitter.com' in social_context or 'x.com' in social_context:
+                deployment_method = "Twitter"
+                social_link = social_context
+                logger.info(f"Detected Twitter deployment from social_context: {social_context}")
 
-        logger.info(f"Token deployment info - Method: {deployment_method}, Link: {social_link}, Context: {social_context}")
+        logger.info(f"Final deployment info - Method: {deployment_method}, Link: {social_link}")
         return deployment_method, social_link
 
     @commands.command()
