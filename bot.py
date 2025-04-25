@@ -172,16 +172,24 @@ class TokenMonitor(commands.Cog):
             tokens = response.json()
             
             logger.info(f"Received {len(tokens)} tokens from API")
-            logger.info(f"Raw tokens data: {json.dumps(tokens[:2], indent=2)}")  # Log les 2 premiers tokens pour debug
+            logger.info(f"Raw tokens data structure: {json.dumps(tokens[:1], indent=2)}")  # Log le premier token complet
 
-            # Find the latest token from monitored chains
+            # Find the latest token from Base
             latest_token = None
             for token in tokens:
-                chain_id = token.get('chainId', '').lower()
-                logger.info(f"Processing token with chain_id: {chain_id}")
-                if chain_id == "base":  # Vérifie spécifiquement pour Base
+                # Log la structure de chaque token pour debug
+                logger.info(f"Processing token: {json.dumps(token, indent=2)}")
+                
+                # Vérifier si le token a une chaîne spécifiée
+                chain = token.get('chain', '')  # Essayer 'chain' au lieu de 'chainId'
+                if not chain:
+                    chain = token.get('chainId', '').lower()  # Fallback sur 'chainId'
+                
+                logger.info(f"Token chain: {chain}")
+                
+                if chain and chain.lower() == "base":
                     latest_token = token
-                    logger.info(f"Found Base token: {token.get('tokenAddress')}")
+                    logger.info(f"Found Base token: {json.dumps(token, indent=2)}")
                     break
 
             if latest_token:
@@ -190,7 +198,9 @@ class TokenMonitor(commands.Cog):
                 # Send token notification
                 await self._send_token_notification(latest_token, ctx.channel, "📊 Dernier Token sur")
             else:
-                await status_msg.edit(content="❌ Aucun token récent trouvé sur Base.")
+                error_msg = "❌ Aucun token récent trouvé sur Base."
+                logger.warning(f"{error_msg} Tokens reçus: {len(tokens)}")
+                await status_msg.edit(content=error_msg)
 
         except Exception as e:
             logger.error(f"Error fetching latest token: {e}", exc_info=True)
@@ -369,13 +379,19 @@ class TokenMonitor(commands.Cog):
             # Filter for Base tokens
             new_tokens = []
             for token in tokens:
-                chain_id = token.get('chainId', '').lower()
-                token_address = token.get('tokenAddress')
+                # Vérifier si le token a une chaîne spécifiée
+                chain = token.get('chain', '')  # Essayer 'chain' au lieu de 'chainId'
+                if not chain:
+                    chain = token.get('chainId', '').lower()  # Fallback sur 'chainId'
                 
-                if chain_id == "base" and token_address:  # Vérifie spécifiquement pour Base
-                    token_key = f"{chain_id}:{token_address}"
+                token_address = token.get('tokenAddress')
+                if not token_address:
+                    token_address = token.get('address')  # Fallback sur 'address'
+                
+                if chain and chain.lower() == "base" and token_address:
+                    token_key = f"base:{token_address}"
                     if token_key not in self.seen_tokens:
-                        logger.info(f"New Base token found: {token_address}")
+                        logger.info(f"New Base token found: {json.dumps(token, indent=2)}")
                         new_tokens.append(token)
                         self.seen_tokens.add(token_key)
 
