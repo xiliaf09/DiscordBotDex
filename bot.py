@@ -29,7 +29,7 @@ DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
 # Constants
-DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
+DEXSCREENER_API_URL = "https://api.dexscreener.com/latest/dex/tokens/base"  # URL pour Base
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 CLANKER_API_URL = "https://www.clanker.world/api"
 MONITORED_CHAINS = {
@@ -169,38 +169,26 @@ class TokenMonitor(commands.Cog):
             
             response = requests.get(DEXSCREENER_API_URL, headers=headers)
             response.raise_for_status()
-            tokens = response.json()
+            data = response.json()
             
-            logger.info(f"Received {len(tokens)} tokens from API")
-            logger.info(f"Raw tokens data structure: {json.dumps(tokens[:1], indent=2)}")  # Log le premier token complet
+            logger.info(f"Raw API response: {json.dumps(data, indent=2)}")
+            
+            # La structure de l'API retourne les tokens dans pairs
+            pairs = data.get('pairs', [])
+            if not pairs:
+                logger.warning("No pairs found in API response")
+                await status_msg.edit(content="❌ Aucun token récent trouvé sur Base.")
+                return
 
-            # Find the latest token from Base
-            latest_token = None
-            for token in tokens:
-                # Log la structure de chaque token pour debug
-                logger.info(f"Processing token: {json.dumps(token, indent=2)}")
-                
-                # Vérifier si le token a une chaîne spécifiée
-                chain = token.get('chain', '')  # Essayer 'chain' au lieu de 'chainId'
-                if not chain:
-                    chain = token.get('chainId', '').lower()  # Fallback sur 'chainId'
-                
-                logger.info(f"Token chain: {chain}")
-                
-                if chain and chain.lower() == "base":
-                    latest_token = token
-                    logger.info(f"Found Base token: {json.dumps(token, indent=2)}")
-                    break
-
-            if latest_token:
-                # Delete the status message
-                await status_msg.delete()
-                # Send token notification
-                await self._send_token_notification(latest_token, ctx.channel, "📊 Dernier Token sur")
-            else:
-                error_msg = "❌ Aucun token récent trouvé sur Base."
-                logger.warning(f"{error_msg} Tokens reçus: {len(tokens)}")
-                await status_msg.edit(content=error_msg)
+            logger.info(f"Found {len(pairs)} pairs")
+            
+            # Prendre la paire la plus récente
+            latest_pair = pairs[0]
+            
+            # Delete the status message
+            await status_msg.delete()
+            # Send token notification
+            await self._send_token_notification(latest_pair, ctx.channel, "📊 Dernier Token sur")
 
         except Exception as e:
             logger.error(f"Error fetching latest token: {e}", exc_info=True)
@@ -293,14 +281,16 @@ class TokenMonitor(commands.Cog):
             else:
                 await ctx.send("❌ Erreur lors de la recherche du dernier post de Trump.")
 
-    async def _send_token_notification(self, token: Dict, channel: discord.TextChannel, title_prefix="🆕 Nouveau Token Détecté"):
+    async def _send_token_notification(self, pair: Dict, channel: discord.TextChannel, title_prefix="🆕 Nouveau Token Détecté"):
         """Send a Discord notification for a token."""
         try:
-            chain_id = token['chainId'].lower()
-            chain_name = MONITORED_CHAINS.get(chain_id, chain_id)
+            chain_name = "Base"
             
             # Set color for Base
             color = discord.Color.blue()
+            
+            # Get token data
+            token_data = pair.get('baseToken', {})
             
             embed = discord.Embed(
                 title=f"{title_prefix} {chain_name}",
@@ -309,14 +299,19 @@ class TokenMonitor(commands.Cog):
             )
 
             # Add token information
-            if token.get('description'):
-                embed.description = token['description']
+            name = token_data.get('name', 'Unknown')
+            symbol = token_data.get('symbol', 'Unknown')
+            embed.add_field(name="Nom", value=name, inline=True)
+            embed.add_field(name="Symbole", value=symbol, inline=True)
 
-            embed.add_field(
-                name="📝 Adresse du Token",
-                value=f"`{token['tokenAddress']}`",
-                inline=False
-            )
+            # Add token address
+            token_address = token_data.get('address')
+            if token_address:
+                embed.add_field(
+                    name="📝 Adresse du Token",
+                    value=f"`{token_address}`",
+                    inline=False
+                )
 
             # Add chain indicator emoji
             embed.add_field(
@@ -325,37 +320,36 @@ class TokenMonitor(commands.Cog):
                 inline=True
             )
 
-            # Add links if available
-            if token.get('links'):
-                links_text = ""
-                for link in token['links']:
-                    if link.get('type') and link.get('url'):
-                        links_text += f"[{link['type']}]({link['url']})\n"
-                if links_text:
-                    embed.add_field(
-                        name="🔗 Liens",
-                        value=links_text,
-                        inline=False
-                    )
+            # Add price information if available
+            price_usd = pair.get('priceUsd')
+            if price_usd:
+                embed.add_field(
+                    name="💰 Prix",
+                    value=f"${float(price_usd):.8f}",
+                    inline=True
+                )
+
+            # Add liquidity information if available
+            liquidity_usd = pair.get('liquidity', {}).get('usd')
+            if liquidity_usd:
+                embed.add_field(
+                    name="💧 Liquidité",
+                    value=f"${float(liquidity_usd):,.2f}",
+                    inline=True
+                )
 
             # Add Dexscreener link
-            if token.get('url'):
-                dexscreener_url = token['url']
-            else:
-                dexscreener_url = f"https://dexscreener.com/base/{token['tokenAddress']}"
-            
-            embed.add_field(
-                name="🔍 Dexscreener",
-                value=f"[Voir sur Dexscreener]({dexscreener_url})",
-                inline=False
-            )
-
-            # Set thumbnail if icon is available
-            if token.get('icon'):
-                embed.set_thumbnail(url=token['icon'])
+            pair_address = pair.get('pairAddress')
+            if pair_address:
+                dexscreener_url = f"https://dexscreener.com/base/{pair_address}"
+                embed.add_field(
+                    name="🔍 Dexscreener",
+                    value=f"[Voir sur Dexscreener]({dexscreener_url})",
+                    inline=False
+                )
 
             await channel.send(embed=embed)
-            logger.info(f"Sent notification for {chain_name} token at address {token['tokenAddress']}")
+            logger.info(f"Sent notification for Base token: {name} ({symbol})")
 
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
@@ -363,7 +357,7 @@ class TokenMonitor(commands.Cog):
 
     @tasks.loop(seconds=POLL_INTERVAL)
     async def monitor_tokens(self):
-        """Monitor for new tokens on monitored blockchains."""
+        """Monitor for new tokens on Base."""
         try:
             headers = {
                 'Accept': '*/*',
@@ -373,36 +367,33 @@ class TokenMonitor(commands.Cog):
             logger.info("Fetching latest token profiles...")
             response = requests.get(DEXSCREENER_API_URL, headers=headers)
             response.raise_for_status()
-            tokens = response.json()
-            logger.info(f"Received {len(tokens)} tokens from API")
+            data = response.json()
+            
+            # Get pairs from the response
+            pairs = data.get('pairs', [])
+            logger.info(f"Received {len(pairs)} pairs from API")
 
-            # Filter for Base tokens
-            new_tokens = []
-            for token in tokens:
-                # Vérifier si le token a une chaîne spécifiée
-                chain = token.get('chain', '')  # Essayer 'chain' au lieu de 'chainId'
-                if not chain:
-                    chain = token.get('chainId', '').lower()  # Fallback sur 'chainId'
+            # Filter for new tokens
+            new_pairs = []
+            for pair in pairs:
+                token_data = pair.get('baseToken', {})
+                token_address = token_data.get('address')
                 
-                token_address = token.get('tokenAddress')
-                if not token_address:
-                    token_address = token.get('address')  # Fallback sur 'address'
-                
-                if chain and chain.lower() == "base" and token_address:
+                if token_address:
                     token_key = f"base:{token_address}"
                     if token_key not in self.seen_tokens:
-                        logger.info(f"New Base token found: {json.dumps(token, indent=2)}")
-                        new_tokens.append(token)
+                        logger.info(f"New Base token found: {json.dumps(pair, indent=2)}")
+                        new_pairs.append(pair)
                         self.seen_tokens.add(token_key)
 
             # Process new tokens
-            for token in new_tokens:
-                await self._send_token_notification(token, self.channel)
+            for pair in new_pairs:
+                await self._send_token_notification(pair, self.channel)
 
             # Save updated seen tokens
-            if new_tokens:
+            if new_pairs:
                 self._save_seen_tokens()
-                logger.info(f"Found and processed {len(new_tokens)} new Base tokens")
+                logger.info(f"Found and processed {len(new_pairs)} new Base tokens")
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching tokens: {e}", exc_info=True)
