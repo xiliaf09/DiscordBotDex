@@ -9,6 +9,7 @@ import discord
 from discord.ext import tasks, commands
 import requests
 from dotenv import load_dotenv
+import httpx
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +44,14 @@ class TokenMonitor(commands.Cog):
         self.active_chains = {
             "base": True,
             "solana": True
+        }
+        self.seen_trump_posts = set()
+        self.last_check_time = None
+        
+        # Liste des tickers crypto à surveiller
+        self.crypto_tickers = {
+            'BTC', 'ETH', 'XRP', 'SOL', 'SUI', 'DOGE', 'SHIB', 'BNB', 'ADA',
+            'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI', 'XLM', 'ATOM'
         }
 
     def _load_seen_tokens(self) -> Set[str]:
@@ -286,6 +295,85 @@ class TokenMonitor(commands.Cog):
             logger.error(f"Could not find channel with ID {CHANNEL_ID}")
             return
 
+    @tasks.loop(seconds=60)
+    async def check_trump_posts(self):
+        try:
+            # Using Truth Social API to get Trump's recent posts
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses",
+                    headers={"Accept": "application/json"}
+                )
+                
+                if response.status_code != 200:
+                    return
+                
+                posts = response.json()
+                
+                for post in posts:
+                    post_id = post['id']
+                    
+                    # Skip if we've already seen this post
+                    if post_id in self.seen_trump_posts:
+                        continue
+                        
+                    content = post['content']
+                    
+                    # Recherche des tickers crypto dans le post
+                    found_tickers = set()
+                    words = content.split()
+                    for word in words:
+                        # Enlever le $ si présent et convertir en majuscules
+                        ticker = word.strip('$').upper()
+                        if ticker in self.crypto_tickers:
+                            found_tickers.add(ticker)
+                    
+                    # Si des tickers sont trouvés, envoyer une notification
+                    if found_tickers:
+                        channel_id = int(os.getenv('DISCORD_CHANNEL_ID'))
+                        channel = self.get_channel(channel_id)
+                        
+                        if channel:
+                            embed = discord.Embed(
+                                title="🚨 Trump mentionne des cryptos!",
+                                description=f"Donald Trump vient de mentionner des cryptos sur Truth Social!",
+                                color=discord.Color.gold()
+                            )
+                            
+                            embed.add_field(
+                                name="Cryptos mentionnées",
+                                value=", ".join([f"${ticker}" for ticker in found_tickers]),
+                                inline=False
+                            )
+                            
+                            embed.add_field(
+                                name="Message",
+                                value=content[:1000] + "..." if len(content) > 1000 else content,
+                                inline=False
+                            )
+                            
+                            embed.add_field(
+                                name="Lien",
+                                value=f"https://truthsocial.com/@realDonaldTrump/posts/{post_id}",
+                                inline=False
+                            )
+                            
+                            await channel.send(embed=embed)
+                    
+                    # Ajouter le post aux posts vus
+                    self.seen_trump_posts.add(post_id)
+                    
+                # Garder seulement les 100 derniers posts en mémoire
+                if len(self.seen_trump_posts) > 100:
+                    self.seen_trump_posts = set(list(self.seen_trump_posts)[-100:])
+                    
+        except Exception as e:
+            print(f"Erreur lors de la vérification des posts de Trump: {e}")
+
+    @check_trump_posts.before_loop
+    async def before_check_trump_posts(self):
+        await self.wait_until_ready()
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -323,6 +411,9 @@ class Bot(commands.Bot):
 
         # Start monitoring
         token_monitor.monitor_tokens.start()
+        
+        # Start Trump posts monitoring
+        token_monitor.check_trump_posts.start()
 
     async def on_ready(self):
         """Called when the bot is ready."""
