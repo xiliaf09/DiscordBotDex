@@ -592,6 +592,56 @@ class ClankerMonitor(commands.Cog):
         self._save_monitor_state()
         await ctx.send("❌ Monitoring Clanker désactivé")
 
+    @commands.command()
+    async def lastclanker(self, ctx):
+        """Fetch and display the latest token from Clanker"""
+        try:
+            # Send initial message
+            status_msg = await ctx.send("🔍 Recherche du dernier token Clanker...")
+            
+            # Fetch latest Clanker deployments with timeout and SSL verification
+            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
+                try:
+                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if not isinstance(data, dict) or "data" not in data:
+                        await status_msg.edit(content="❌ Format de réponse invalide de l'API Clanker.")
+                        return
+
+                    tokens = data["data"]
+                    # Chercher le premier token qui correspond à nos critères
+                    latest_token = None
+                    for token in tokens:
+                        if self._should_process_token(token):
+                            latest_token = token
+                            break
+
+                    if latest_token:
+                        # Delete the status message
+                        await status_msg.delete()
+                        # Send token notification
+                        await self._send_clanker_notification(latest_token, ctx.channel)
+                    else:
+                        await status_msg.edit(content="❌ Aucun token récent trouvé avec tweet ou cast Warpcast.")
+
+                except httpx.ConnectError:
+                    await status_msg.edit(content="❌ Impossible de se connecter à l'API Clanker. Veuillez réessayer plus tard.")
+                except httpx.TimeoutException:
+                    await status_msg.edit(content="❌ Délai d'attente dépassé lors de la connexion à l'API Clanker.")
+                except httpx.HTTPStatusError as e:
+                    await status_msg.edit(content=f"❌ Erreur lors de la requête à l'API Clanker: {e.response.status_code}")
+                except json.JSONDecodeError:
+                    await status_msg.edit(content="❌ Réponse invalide reçue de l'API Clanker.")
+
+        except Exception as e:
+            logger.error(f"Error fetching latest Clanker token: {e}")
+            if status_msg:
+                await status_msg.edit(content="❌ Erreur lors de la recherche du dernier token Clanker.")
+            else:
+                await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
+
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
