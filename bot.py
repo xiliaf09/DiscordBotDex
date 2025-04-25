@@ -31,12 +31,14 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 # Constants
 DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
+CLANKER_API_URL = "https://api.clanker.world/v1"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
 }
 POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
+SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -450,6 +452,125 @@ class TokenMonitor(commands.Cog):
     async def before_check_trump_posts(self):
         await self.wait_until_ready()
 
+class ClankerMonitor(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.seen_tokens: Set[str] = self._load_seen_tokens()
+        self.channel = None
+        self.is_active = True
+
+    def _load_seen_tokens(self) -> Set[str]:
+        """Load previously seen Clanker token addresses from file."""
+        try:
+            if os.path.exists(SEEN_CLANKER_TOKENS_FILE):
+                with open(SEEN_CLANKER_TOKENS_FILE, 'r') as f:
+                    return set(json.load(f))
+            return set()
+        except Exception as e:
+            logger.error(f"Error loading seen Clanker tokens: {e}")
+            return set()
+
+    def _save_seen_tokens(self):
+        """Save seen Clanker token addresses to file."""
+        try:
+            with open(SEEN_CLANKER_TOKENS_FILE, 'w') as f:
+                json.dump(list(self.seen_tokens), f)
+        except Exception as e:
+            logger.error(f"Error saving seen Clanker tokens: {e}")
+
+    @commands.command()
+    async def clankeron(self, ctx):
+        """Activer le monitoring pour Clanker"""
+        self.is_active = True
+        await ctx.send("✅ Monitoring Clanker activé")
+
+    @commands.command()
+    async def clankeroff(self, ctx):
+        """Désactiver le monitoring pour Clanker"""
+        self.is_active = False
+        await ctx.send("❌ Monitoring Clanker désactivé")
+
+    async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
+        """Send a notification for a new Clanker token."""
+        try:
+            embed = discord.Embed(
+                title="🆕 Nouveau Token Clanker",
+                description=f"Un nouveau token a été déployé sur Clanker!",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+
+            # Add token information
+            embed.add_field(
+                name="Nom du Token",
+                value=token_data.get('name', 'Unknown'),
+                inline=True
+            )
+            
+            embed.add_field(
+                name="Symbole",
+                value=token_data.get('symbol', 'Unknown'),
+                inline=True
+            )
+
+            embed.add_field(
+                name="Contract",
+                value=f"`{token_data.get('address', 'Unknown')}`",
+                inline=False
+            )
+
+            # Add deployment tweet/cast link if available
+            if 'deploymentTweet' in token_data:
+                embed.add_field(
+                    name="Tweet/Cast de Déploiement",
+                    value=token_data['deploymentTweet'],
+                    inline=False
+                )
+
+            # Add token image if available
+            if 'imageUrl' in token_data:
+                embed.set_thumbnail(url=token_data['imageUrl'])
+
+            await channel.send(embed=embed)
+            logger.info(f"Clanker notification sent for token: {token_data.get('name')}")
+
+        except Exception as e:
+            logger.error(f"Error sending Clanker notification: {e}")
+
+    @tasks.loop(seconds=POLL_INTERVAL)
+    async def monitor_clanker(self):
+        """Monitor for new Clanker token deployments."""
+        if not self.is_active:
+            return
+
+        try:
+            if not self.channel:
+                self.channel = self.bot.get_channel(CHANNEL_ID)
+                if not self.channel:
+                    logger.error("Could not find channel for Clanker notifications")
+                    return
+
+            # Fetch latest Clanker deployments
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
+                response.raise_for_status()
+                tokens = response.json()
+
+                for token in tokens:
+                    token_address = token.get('address')
+                    if token_address and token_address not in self.seen_tokens:
+                        await self._send_clanker_notification(token, self.channel)
+                        self.seen_tokens.add(token_address)
+                        self._save_seen_tokens()
+
+        except Exception as e:
+            logger.error(f"Error monitoring Clanker: {e}")
+
+    @monitor_clanker.before_loop
+    async def before_monitor_clanker(self):
+        """Wait for bot to be ready before starting the Clanker monitoring loop."""
+        await self.bot.wait_until_ready()
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -457,39 +578,15 @@ class Bot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        """Setup tasks when bot is ready."""
-        token_monitor = TokenMonitor(self)
-        await self.add_cog(token_monitor)
+        """Initialize the bot's cogs and start monitoring tasks."""
+        # Add cogs
+        await self.add_cog(TokenMonitor(self))
+        await self.add_cog(ClankerMonitor(self))
         
-        # Cache initial tokens before starting monitoring
-        try:
-            headers = {
-                'Accept': '*/*',
-                'User-Agent': 'Mozilla/5.0'
-            }
-            
-            logger.info("Caching initial tokens...")
-            response = requests.get(DEXSCREENER_API_URL, headers=headers)
-            response.raise_for_status()
-            tokens = response.json()
-
-            # Add all current tokens to seen_tokens
-            for token in tokens:
-                chain_id = token.get('chainId', '').lower()
-                token_address = token.get('tokenAddress')
-                if chain_id in MONITORED_CHAINS and token_address:
-                    token_key = f"{chain_id}:{token_address}"
-                    token_monitor.seen_tokens.add(token_key)
-            
-            logger.info(f"Cached {len(token_monitor.seen_tokens)} initial tokens")
-        except Exception as e:
-            logger.error(f"Error caching initial tokens: {e}")
-
-        # Start monitoring
-        token_monitor.monitor_tokens.start()
-        
-        # Start Trump posts monitoring
-        token_monitor.check_trump_posts.start()
+        # Start monitoring tasks
+        self.get_cog('TokenMonitor').monitor_tokens.start()
+        self.get_cog('TokenMonitor').check_trump_posts.start()
+        self.get_cog('ClankerMonitor').monitor_clanker.start()
 
     async def on_ready(self):
         """Called when the bot is ready."""

@@ -1,44 +1,70 @@
-# Discord DexScreener Bot
+# Discord Bot for Base Blockchain Token Updates
 
-Un bot Discord qui surveille les nouveaux tokens sur Base et Solana via DexScreener, et suit les mentions de crypto-monnaies par Donald Trump sur Truth Social.
+Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les mentions de cryptomonnaies dans les posts de Trump sur Truth Social.
 
 ## Fonctionnalités
 
-- Surveillance en temps réel des nouveaux tokens sur Base et Solana
-- Notifications Discord pour les nouveaux tokens détectés
-- Surveillance des posts de Trump mentionnant des crypto-monnaies
-- Commandes pour activer/désactiver la surveillance par chaîne
-- Commande pour afficher le dernier token détecté
-- Commande de test pour vérifier le bon fonctionnement du bot
+- Surveillance des nouveaux tokens sur Base et Solana
+- Détection des mentions de cryptomonnaies dans les posts de Trump
+- Commandes pour activer/désactiver le monitoring par chaîne
+- Surveillance des nouveaux tokens Clanker
+- Affichage des informations détaillées des tokens
 
 ## Commandes
 
-- `!baseon` - Activer la surveillance de Base
-- `!baseoff` - Désactiver la surveillance de Base
-- `!solanaon` - Activer la surveillance de Solana
-- `!solanaoff` - Désactiver la surveillance de Solana
-- `!status` - Afficher le statut de surveillance des chaînes
-- `!lasttoken` - Afficher le dernier token détecté
-- `!lasttrump` - Afficher le dernier post de Trump sur Truth Social
-- `!test` - Tester le bon fonctionnement du bot
+### Commandes Générales
+- `!test` - Envoie un message test pour vérifier que le bot fonctionne
+- `!status` - Affiche le statut du monitoring pour chaque chaîne
+
+### Commandes Base
+- `!baseon` - Active le monitoring pour Base
+- `!baseoff` - Désactive le monitoring pour Base
+
+### Commandes Solana
+- `!solanaon` - Active le monitoring pour Solana
+- `!solanaoff` - Désactive le monitoring pour Solana
+
+### Commandes Trump
+- `!lasttrump` - Affiche le dernier post de Trump sur Truth Social
+
+### Commandes Clanker
+- `!clankeron` - Active le monitoring des nouveaux tokens Clanker
+- `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
+
+## Installation
+
+1. Clonez le repository
+2. Installez les dépendances :
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Créez un fichier `.env` avec les variables suivantes :
+   ```
+   DISCORD_TOKEN=votre_token_discord
+   CHANNEL_ID=id_du_canal
+   ```
+4. Lancez le bot :
+   ```bash
+   python bot.py
+   ```
 
 ## Configuration
 
-1. Créer un fichier `.env` avec les variables suivantes :
-```
-DISCORD_TOKEN=votre_token_discord
-CHANNEL_ID=id_du_canal_discord
-```
+Le bot utilise les variables d'environnement suivantes :
+- `DISCORD_TOKEN` : Le token de votre bot Discord
+- `CHANNEL_ID` : L'ID du canal où les notifications seront envoyées
 
-2. Installer les dépendances :
-```bash
-pip install -r requirements.txt
-```
+## Dépendances
 
-3. Lancer le bot :
-```bash
-python bot.py
-```
+- discord.py
+- requests
+- python-dotenv
+- httpx
+- feedparser
+
+## Contribution
+
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou une pull request.
 
 ## Déploiement sur Railway
 
