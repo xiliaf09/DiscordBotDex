@@ -31,7 +31,7 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 # Constants
 DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
-CLANKER_API_URL = "https://api.clanker.world/v1"
+CLANKER_API_URL = "https://www.clanker.world/api"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -497,21 +497,36 @@ class ClankerMonitor(commands.Cog):
             # Send initial message
             status_msg = await ctx.send("🔍 Recherche du dernier token Clanker...")
             
-            # Fetch latest Clanker deployments
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
-                response.raise_for_status()
-                tokens = response.json()
+            # Fetch latest Clanker deployments with timeout and SSL verification
+            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
+                try:
+                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
+                    response.raise_for_status()
+                    data = response.json()
 
-                if tokens:
-                    # Get the first (latest) token
-                    latest_token = tokens[0]
-                    # Delete the status message
-                    await status_msg.delete()
-                    # Send token notification
-                    await self._send_clanker_notification(latest_token, ctx.channel)
-                else:
-                    await status_msg.edit(content="❌ Aucun token récent trouvé sur Clanker.")
+                    if not isinstance(data, dict) or "data" not in data:
+                        await status_msg.edit(content="❌ Format de réponse invalide de l'API Clanker.")
+                        return
+
+                    tokens = data["data"]
+                    if tokens:
+                        # Get the first (latest) token
+                        latest_token = tokens[0]
+                        # Delete the status message
+                        await status_msg.delete()
+                        # Send token notification
+                        await self._send_clanker_notification(latest_token, ctx.channel)
+                    else:
+                        await status_msg.edit(content="❌ Aucun token récent trouvé sur Clanker.")
+
+                except httpx.ConnectError:
+                    await status_msg.edit(content="❌ Impossible de se connecter à l'API Clanker. Veuillez réessayer plus tard.")
+                except httpx.TimeoutException:
+                    await status_msg.edit(content="❌ Délai d'attente dépassé lors de la connexion à l'API Clanker.")
+                except httpx.HTTPStatusError as e:
+                    await status_msg.edit(content=f"❌ Erreur lors de la requête à l'API Clanker: {e.response.status_code}")
+                except json.JSONDecodeError:
+                    await status_msg.edit(content="❌ Réponse invalide reçue de l'API Clanker.")
 
         except Exception as e:
             logger.error(f"Error fetching latest Clanker token: {e}")
@@ -525,7 +540,7 @@ class ClankerMonitor(commands.Cog):
         try:
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
-                description=f"Un nouveau token a été déployé sur Clanker!",
+                description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
                 color=discord.Color.blue(),
                 timestamp=datetime.now(timezone.utc)
             )
@@ -545,21 +560,47 @@ class ClankerMonitor(commands.Cog):
 
             embed.add_field(
                 name="Contract",
-                value=f"`{token_data.get('address', 'Unknown')}`",
+                value=f"`{token_data.get('contract_address', 'Unknown')}`",
                 inline=False
             )
 
+            # Add pool information if available
+            if token_data.get('pool_address'):
+                embed.add_field(
+                    name="Pool Address",
+                    value=f"`{token_data['pool_address']}`",
+                    inline=False
+                )
+
             # Add deployment tweet/cast link if available
-            if 'deploymentTweet' in token_data:
+            if token_data.get('cast_hash'):
                 embed.add_field(
                     name="Tweet/Cast de Déploiement",
-                    value=token_data['deploymentTweet'],
+                    value=token_data['cast_hash'],
                     inline=False
                 )
 
             # Add token image if available
-            if 'imageUrl' in token_data:
-                embed.set_thumbnail(url=token_data['imageUrl'])
+            if token_data.get('img_url'):
+                embed.set_thumbnail(url=token_data['img_url'])
+
+            # Add social context if available
+            if social_context := token_data.get('social_context', {}):
+                platform = social_context.get('platform', 'Unknown')
+                interface = social_context.get('interface', 'Unknown')
+                embed.add_field(
+                    name="Déployé via",
+                    value=f"{platform} ({interface})",
+                    inline=True
+                )
+
+            # Add market cap if available
+            if market_cap := token_data.get('starting_market_cap'):
+                embed.add_field(
+                    name="Market Cap Initial",
+                    value=f"${market_cap:,.2f}",
+                    inline=True
+                )
 
             await channel.send(embed=embed)
             logger.info(f"Clanker notification sent for token: {token_data.get('name')}")
@@ -580,18 +621,33 @@ class ClankerMonitor(commands.Cog):
                     logger.error("Could not find channel for Clanker notifications")
                     return
 
-            # Fetch latest Clanker deployments
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
-                response.raise_for_status()
-                tokens = response.json()
+            # Fetch latest Clanker deployments with timeout and SSL verification
+            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
+                try:
+                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
+                    response.raise_for_status()
+                    data = response.json()
 
-                for token in tokens:
-                    token_address = token.get('address')
-                    if token_address and token_address not in self.seen_tokens:
-                        await self._send_clanker_notification(token, self.channel)
-                        self.seen_tokens.add(token_address)
-                        self._save_seen_tokens()
+                    if not isinstance(data, dict) or "data" not in data:
+                        logger.error("Invalid response format from Clanker API")
+                        return
+
+                    tokens = data["data"]
+                    for token in tokens:
+                        contract_address = token.get('contract_address')
+                        if contract_address and contract_address not in self.seen_tokens:
+                            await self._send_clanker_notification(token, self.channel)
+                            self.seen_tokens.add(contract_address)
+                            self._save_seen_tokens()
+
+                except httpx.ConnectError as e:
+                    logger.error(f"Connection error to Clanker API: {e}")
+                except httpx.TimeoutException as e:
+                    logger.error(f"Timeout while connecting to Clanker API: {e}")
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"HTTP error from Clanker API: {e}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON response from Clanker API: {e}")
 
         except Exception as e:
             logger.error(f"Error monitoring Clanker: {e}")
