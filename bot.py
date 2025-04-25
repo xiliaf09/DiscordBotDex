@@ -39,16 +39,14 @@ MONITORED_CHAINS = {
 POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
 SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
+MONITOR_STATES_FILE = "monitor_states.json"  # Nouveau fichier pour sauvegarder les états
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
-        self.active_chains = {
-            "base": True,
-            "solana": True
-        }
+        self.active_chains = self._load_monitor_states()
         self.seen_trump_posts = set()
         self.last_check_time = None
         
@@ -77,28 +75,65 @@ class TokenMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error saving seen tokens: {e}")
 
+    def _load_monitor_states(self) -> dict:
+        """Load saved monitor states from file."""
+        try:
+            if os.path.exists(MONITOR_STATES_FILE):
+                with open(MONITOR_STATES_FILE, 'r') as f:
+                    states = json.load(f)
+                    return states.get('chains', {
+                        "base": True,
+                        "solana": True
+                    })
+            return {
+                "base": True,
+                "solana": True
+            }
+        except Exception as e:
+            logger.error(f"Error loading monitor states: {e}")
+            return {
+                "base": True,
+                "solana": True
+            }
+
+    def _save_monitor_states(self):
+        """Save current monitor states to file."""
+        try:
+            current_states = {
+                'chains': self.active_chains,
+                'clanker': self.bot.get_cog('ClankerMonitor').is_active if self.bot.get_cog('ClankerMonitor') else True
+            }
+            with open(MONITOR_STATES_FILE, 'w') as f:
+                json.dump(current_states, f)
+        except Exception as e:
+            logger.error(f"Error saving monitor states: {e}")
+
     @commands.command()
     async def baseon(self, ctx):
         """Activer le monitoring pour Base"""
         self.active_chains["base"] = True
+        self._save_monitor_states()
         await ctx.send("✅ Monitoring activé pour Base")
 
     @commands.command()
     async def baseoff(self, ctx):
         """Désactiver le monitoring pour Base"""
         self.active_chains["base"] = False
+        self._save_monitor_states()
         await ctx.send("❌ Monitoring désactivé pour Base")
 
     @commands.command()
     async def solanaon(self, ctx):
         """Activer le monitoring pour Solana"""
         self.active_chains["solana"] = True
+        self._save_monitor_states()
         await ctx.send("✅ Monitoring activé pour Solana")
 
     @commands.command()
     async def solanaoff(self, ctx):
         """Désactiver le monitoring pour Solana"""
         self.active_chains["solana"] = False
+        self._save_monitor_states()
         await ctx.send("❌ Monitoring désactivé pour Solana")
 
     @commands.command()
@@ -457,7 +492,8 @@ class ClankerMonitor(commands.Cog):
         self.bot = bot
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
-        self.is_active = True
+        self.is_active = self._load_monitor_state()
+        self.last_check_time = None
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -478,66 +514,65 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error saving seen Clanker tokens: {e}")
 
-    @commands.command()
-    async def clankeron(self, ctx):
-        """Activer le monitoring pour Clanker"""
-        self.is_active = True
-        await ctx.send("✅ Monitoring Clanker activé")
-
-    @commands.command()
-    async def clankeroff(self, ctx):
-        """Désactiver le monitoring pour Clanker"""
-        self.is_active = False
-        await ctx.send("❌ Monitoring Clanker désactivé")
-
-    @commands.command()
-    async def lastclanker(self, ctx):
-        """Fetch and display the latest token from Clanker"""
+    def _load_monitor_state(self) -> bool:
+        """Load saved Clanker monitor state from file."""
         try:
-            # Send initial message
-            status_msg = await ctx.send("🔍 Recherche du dernier token Clanker...")
-            
-            # Fetch latest Clanker deployments with timeout and SSL verification
-            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
-                try:
-                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
-                    response.raise_for_status()
-                    data = response.json()
-
-                    if not isinstance(data, dict) or "data" not in data:
-                        await status_msg.edit(content="❌ Format de réponse invalide de l'API Clanker.")
-                        return
-
-                    tokens = data["data"]
-                    if tokens:
-                        # Get the first (latest) token
-                        latest_token = tokens[0]
-                        # Delete the status message
-                        await status_msg.delete()
-                        # Send token notification
-                        await self._send_clanker_notification(latest_token, ctx.channel)
-                    else:
-                        await status_msg.edit(content="❌ Aucun token récent trouvé sur Clanker.")
-
-                except httpx.ConnectError:
-                    await status_msg.edit(content="❌ Impossible de se connecter à l'API Clanker. Veuillez réessayer plus tard.")
-                except httpx.TimeoutException:
-                    await status_msg.edit(content="❌ Délai d'attente dépassé lors de la connexion à l'API Clanker.")
-                except httpx.HTTPStatusError as e:
-                    await status_msg.edit(content=f"❌ Erreur lors de la requête à l'API Clanker: {e.response.status_code}")
-                except json.JSONDecodeError:
-                    await status_msg.edit(content="❌ Réponse invalide reçue de l'API Clanker.")
-
+            if os.path.exists(MONITOR_STATES_FILE):
+                with open(MONITOR_STATES_FILE, 'r') as f:
+                    states = json.load(f)
+                    return states.get('clanker', True)
+            return True
         except Exception as e:
-            logger.error(f"Error fetching latest Clanker token: {e}")
-            if status_msg:
-                await status_msg.edit(content="❌ Erreur lors de la recherche du dernier token Clanker.")
-            else:
-                await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
+            logger.error(f"Error loading Clanker monitor state: {e}")
+            return True
+
+    def _save_monitor_state(self):
+        """Save current Clanker monitor state to file."""
+        try:
+            current_states = {
+                'chains': self.bot.get_cog('TokenMonitor').active_chains if self.bot.get_cog('TokenMonitor') else {"base": True, "solana": True},
+                'clanker': self.is_active
+            }
+            with open(MONITOR_STATES_FILE, 'w') as f:
+                json.dump(current_states, f)
+        except Exception as e:
+            logger.error(f"Error saving monitor states: {e}")
+
+    def _get_social_links(self, token_data: Dict) -> tuple:
+        """Extract tweet and warpcast links from token data."""
+        tweet_link = None
+        warpcast_link = None
+        cast_hash = token_data.get('cast_hash', '')
+
+        # Si c'est un lien Twitter
+        if cast_hash and 'twitter.com' in cast_hash:
+            tweet_link = cast_hash
+
+        # Si c'est un cast Warpcast (hash sans http)
+        elif cast_hash and not cast_hash.startswith('http'):
+            warpcast_link = f"https://warpcast.com/{cast_hash}"
+
+        return tweet_link, warpcast_link
+
+    def _should_process_token(self, token_data: Dict) -> bool:
+        """Determine if a token should be processed based on filters."""
+        # Vérifier si le token a un cast_hash
+        if not token_data.get('cast_hash'):
+            return False
+
+        # Vérifier si c'est un tweet ou un cast Warpcast
+        cast_hash = token_data['cast_hash']
+        return 'twitter.com' in cast_hash or not cast_hash.startswith('http')
 
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
+            # Vérifier si le token doit être traité
+            if not self._should_process_token(token_data):
+                return
+
+            tweet_link, warpcast_link = self._get_social_links(token_data)
+            
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
                 description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
@@ -572,27 +607,23 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add deployment tweet/cast link if available
-            if token_data.get('cast_hash'):
+            # Add social links
+            if tweet_link:
                 embed.add_field(
-                    name="Tweet/Cast de Déploiement",
-                    value=token_data['cast_hash'],
+                    name="Tweet de Déploiement",
+                    value=tweet_link,
+                    inline=False
+                )
+            if warpcast_link:
+                embed.add_field(
+                    name="Cast Warpcast",
+                    value=warpcast_link,
                     inline=False
                 )
 
             # Add token image if available
             if token_data.get('img_url'):
                 embed.set_thumbnail(url=token_data['img_url'])
-
-            # Add social context if available
-            if social_context := token_data.get('social_context', {}):
-                platform = social_context.get('platform', 'Unknown')
-                interface = social_context.get('interface', 'Unknown')
-                embed.add_field(
-                    name="Déployé via",
-                    value=f"{platform} ({interface})",
-                    inline=True
-                )
 
             # Add market cap if available
             if market_cap := token_data.get('starting_market_cap'):
@@ -621,6 +652,8 @@ class ClankerMonitor(commands.Cog):
                     logger.error("Could not find channel for Clanker notifications")
                     return
 
+            current_time = datetime.now(timezone.utc)
+
             # Fetch latest Clanker deployments with timeout and SSL verification
             async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
                 try:
@@ -634,11 +667,24 @@ class ClankerMonitor(commands.Cog):
 
                     tokens = data["data"]
                     for token in tokens:
-                        contract_address = token.get('contract_address')
-                        if contract_address and contract_address not in self.seen_tokens:
-                            await self._send_clanker_notification(token, self.channel)
-                            self.seen_tokens.add(contract_address)
-                            self._save_seen_tokens()
+                        # Si c'est le premier démarrage, on enregistre juste les tokens sans envoyer de notification
+                        if self.last_check_time is None:
+                            if self._should_process_token(token):
+                                contract_address = token.get('contract_address')
+                                if contract_address:
+                                    self.seen_tokens.add(contract_address)
+                            continue
+
+                        # Pour les démarrages suivants, on vérifie la date de création
+                        created_at = datetime.fromisoformat(token.get('created_at').replace('Z', '+00:00'))
+                        if created_at > self.last_check_time:
+                            contract_address = token.get('contract_address')
+                            if contract_address and contract_address not in self.seen_tokens and self._should_process_token(token):
+                                await self._send_clanker_notification(token, self.channel)
+                                self.seen_tokens.add(contract_address)
+                                self._save_seen_tokens()
+
+                    self.last_check_time = current_time
 
                 except httpx.ConnectError as e:
                     logger.error(f"Connection error to Clanker API: {e}")
@@ -656,6 +702,20 @@ class ClankerMonitor(commands.Cog):
     async def before_monitor_clanker(self):
         """Wait for bot to be ready before starting the Clanker monitoring loop."""
         await self.bot.wait_until_ready()
+
+    @commands.command()
+    async def clankeron(self, ctx):
+        """Activer le monitoring pour Clanker"""
+        self.is_active = True
+        self._save_monitor_state()
+        await ctx.send("✅ Monitoring Clanker activé")
+
+    @commands.command()
+    async def clankeroff(self, ctx):
+        """Désactiver le monitoring pour Clanker"""
+        self.is_active = False
+        self._save_monitor_state()
+        await ctx.send("❌ Monitoring Clanker désactivé")
 
 class Bot(commands.Bot):
     def __init__(self):
