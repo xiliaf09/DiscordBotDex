@@ -1,0 +1,17 @@
+2025-04-25 02:03:07,131 - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-04-25 02:03:07,133 - INFO - logging in using static token
+2025-04-25 02:03:07,729 - ERROR - Could not find channel with ID 1365114395352371210
+2025-04-25 02:03:08,340 - INFO - Shard ID None has connected to Gateway (Session ID: 53641b92ad011c7c3efd1fb5762876cf).
+2025-04-25 02:03:10,350 - INFO - Logged in as DexBaseBot (1365113079158800394)
+2025-04-25 02:06:13,033 - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-04-25 02:06:13,034 - INFO - logging in using static token
+2025-04-25 02:06:13,439 - ERROR - Could not find channel with ID 1365114395352371210
+2025-04-25 02:06:13,753 - INFO - Shard ID None has connected to Gateway (Session ID: 24aafab41ccd3d9c3a6d5f8dce17eaf9).
+2025-04-25 02:06:15,759 - INFO - Logged in as DexBaseBot (1365113079158800394)
+2025-04-25 02:07:27,389 - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-04-25 02:07:27,390 - INFO - logging in using static token
+2025-04-25 02:07:27,877 - ERROR - Could not find channel with ID 1365114395352371210
+2025-04-25 02:07:28,150 - INFO - Shard ID None has connected to Gateway (Session ID: d93ee183753866df00adbf1be35d2ccb).
+2025-04-25 02:07:30,158 - INFO - Logged in as DexBaseBot (1365113079158800394)
+2025-04-25 02:09:44,691 - INFO - Test notification sent successfully
+2025-04-25 02:09:45,161 - INFO - Test notification sent successfully
