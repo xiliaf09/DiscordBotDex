@@ -470,7 +470,8 @@ class TokenMonitor(commands.Cog):
 
     @check_trump_posts.before_loop
     async def before_check_trump_posts(self):
-        await self.wait_until_ready()
+        """Wait until the bot is ready before starting the Trump posts check."""
+        await self.bot.wait_until_ready()
 
 class ClankerMonitor(commands.Cog):
     def __init__(self, bot):
@@ -479,8 +480,7 @@ class ClankerMonitor(commands.Cog):
         self.channel = None
         self.is_active = self._load_monitor_state()
         self.last_check_time = datetime.now(timezone.utc)  # Initialisation avec timezone
-        # Démarrer la boucle de monitoring
-        self.monitor_clanker.start()
+        # La tâche sera démarrée dans setup_hook
 
     def cog_unload(self):
         """Called when the cog is unloaded."""
@@ -819,16 +819,18 @@ class Bot(commands.Bot):
             # Cache initial Clanker tokens
             logger.info("Caching initial Clanker tokens...")
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
+                response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
                 response.raise_for_status()
-                clanker_tokens = response.json()
+                data = response.json()
                 
-                for token in clanker_tokens:
-                    token_address = token.get('address')
-                    if token_address:
-                        clanker_monitor.seen_tokens.add(token_address)
-                
-                logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
+                if isinstance(data, dict) and "data" in data:
+                    tokens = data["data"]
+                    for token in tokens:
+                        token_address = token.get('contract_address')
+                        if token_address:
+                            clanker_monitor.seen_tokens.add(token_address)
+                    
+                    logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
                 
         except Exception as e:
             logger.error(f"Error caching initial tokens: {e}")
