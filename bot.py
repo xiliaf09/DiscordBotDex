@@ -30,7 +30,7 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
 # Constants
 DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
-TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/@realDonaldTrump.rss"
+TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -176,18 +176,30 @@ class TokenMonitor(commands.Cog):
         try:
             # Send initial message
             status_msg = await ctx.send("🔍 Recherche du dernier post de Trump...")
+            logger.info("Attempting to fetch Trump's posts from Truth Social RSS")
             
             # Using Truth Social RSS feed to get Trump's recent posts
             feed = feedparser.parse(TRUTH_SOCIAL_RSS_URL)
+            logger.info(f"RSS Feed Status: Version={feed.version}, Status={feed.get('status', 'N/A')}")
+            logger.info(f"Feed entries found: {len(feed.entries)}")
             
             if not feed.entries:
+                logger.warning("No entries found in the RSS feed")
                 await status_msg.edit(content="❌ Aucun post récent trouvé de Trump.")
                 return
             
             # Get the latest post
             latest_post = feed.entries[0]
-            post_id = latest_post.id.split('/')[-1]  # Extract post ID from the URL
-            content = latest_post.description
+            logger.info(f"Latest post found with title: {latest_post.get('title', 'No title')}")
+            
+            try:
+                post_id = latest_post.id.split('/')[-1]  # Extract post ID from the URL
+            except (AttributeError, IndexError):
+                post_id = "unknown"
+                logger.warning("Could not extract post ID from feed entry")
+            
+            content = latest_post.get('description', latest_post.get('summary', latest_post.get('title', 'No content available')))
+            logger.info(f"Content length: {len(content)}")
             
             # Recherche des tickers crypto dans le post
             found_tickers = set()
@@ -197,6 +209,9 @@ class TokenMonitor(commands.Cog):
                 ticker = word.strip('$').upper()
                 if ticker in self.crypto_tickers:
                     found_tickers.add(ticker)
+            
+            if found_tickers:
+                logger.info(f"Found crypto tickers in post: {found_tickers}")
             
             # Delete the status message
             await status_msg.delete()
@@ -222,17 +237,18 @@ class TokenMonitor(commands.Cog):
                     inline=False
                 )
             
+            post_link = latest_post.get('link', f"https://truthsocial.com/@realDonaldTrump/posts/{post_id}")
             embed.add_field(
                 name="Lien",
-                value=latest_post.link,
+                value=post_link,
                 inline=False
             )
             
             await ctx.send(embed=embed)
-            logger.info(f"Sent latest Trump post notification with ID {post_id}")
+            logger.info(f"Successfully sent latest Trump post notification with ID {post_id}")
             
         except Exception as e:
-            logger.error(f"Error fetching latest Trump post: {e}")
+            logger.error(f"Error fetching latest Trump post: {str(e)}", exc_info=True)
             if status_msg:
                 await status_msg.edit(content="❌ Erreur lors de la recherche du dernier post de Trump.")
             else:
