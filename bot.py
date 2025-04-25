@@ -32,7 +32,7 @@ MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
 }
-POLL_INTERVAL = 10  # seconds
+POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
 
 class TokenMonitor(commands.Cog):
