@@ -295,14 +295,17 @@ class TokenMonitor(commands.Cog):
             logger.error(f"Could not find channel with ID {CHANNEL_ID}")
             return
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(seconds=10)
     async def check_trump_posts(self):
         try:
             # Using Truth Social API to get Trump's recent posts
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
                     "https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses",
-                    headers={"Accept": "application/json"}
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    }
                 )
                 
                 if response.status_code != 200:
