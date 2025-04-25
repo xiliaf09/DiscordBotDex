@@ -537,34 +537,20 @@ class ClankerMonitor(commands.Cog):
             logger.error(f"Error parsing datetime {datetime_str}: {e}")
             return datetime.now(timezone.utc)
 
-    def _should_process_token(self, token_data: Dict) -> bool:
-        """Determine if a token should be processed based on filters."""
-        # Vérifier si le token a un social_context
+    def _get_deployment_info(self, token_data: Dict) -> tuple:
+        """Extract deployment method and link from token data."""
         social_context = token_data.get('social_context', '')
-        if not social_context:
-            logger.debug(f"Token {token_data.get('name')} skipped - no social_context")
-            return False
-
-        # Vérifier si c'est un tweet ou un cast Warpcast
-        if 'twitter.com' in social_context or 'warpcast.com' in social_context:
-            logger.info(f"Token {token_data.get('name')} has valid social link: {social_context}")
-            return True
-            
-        logger.debug(f"Token {token_data.get('name')} has invalid social link: {social_context}")
-        return False
-
-    def _get_social_links(self, token_data: Dict) -> tuple:
-        """Extract tweet and warpcast links from token data."""
-        tweet_link = None
-        warpcast_link = None
-        social_context = token_data.get('social_context', '')
+        deployment_method = "Interface Clanker"
+        social_link = None
 
         if 'twitter.com' in social_context:
-            tweet_link = social_context
+            deployment_method = "Twitter"
+            social_link = social_context
         elif 'warpcast.com' in social_context:
-            warpcast_link = social_context
+            deployment_method = "Warpcast"
+            social_link = social_context
 
-        return tweet_link, warpcast_link
+        return deployment_method, social_link
 
     @commands.command()
     async def clankeron(self, ctx):
@@ -599,20 +585,17 @@ class ClankerMonitor(commands.Cog):
                         return
 
                     tokens = data["data"]
-                    # Chercher le premier token qui correspond à nos critères
-                    latest_token = None
-                    for token in tokens:
-                        if self._should_process_token(token):
-                            latest_token = token
-                            break
+                    if not tokens:
+                        await status_msg.edit(content="❌ Aucun token trouvé sur Clanker.")
+                        return
 
-                    if latest_token:
-                        # Delete the status message
-                        await status_msg.delete()
-                        # Send token notification
-                        await self._send_clanker_notification(latest_token, ctx.channel)
-                    else:
-                        await status_msg.edit(content="❌ Aucun token récent trouvé avec tweet ou cast Warpcast.")
+                    # Prendre le dernier token
+                    latest_token = tokens[0]
+                    
+                    # Delete the status message
+                    await status_msg.delete()
+                    # Send token notification
+                    await self._send_clanker_notification(latest_token, ctx.channel)
 
                 except httpx.ConnectError:
                     await status_msg.edit(content="❌ Impossible de se connecter à l'API Clanker. Veuillez réessayer plus tard.")
@@ -633,7 +616,7 @@ class ClankerMonitor(commands.Cog):
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
-            tweet_link, warpcast_link = self._get_social_links(token_data)
+            deployment_method, social_link = self._get_deployment_info(token_data)
             
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
@@ -669,17 +652,17 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add social links
-            if tweet_link:
+            # Add deployment method and social link if available
+            embed.add_field(
+                name="Méthode de Déploiement",
+                value=deployment_method,
+                inline=True
+            )
+
+            if social_link:
                 embed.add_field(
-                    name="Tweet de Déploiement",
-                    value=tweet_link,
-                    inline=False
-                )
-            if warpcast_link:
-                embed.add_field(
-                    name="Cast Warpcast",
-                    value=warpcast_link,
+                    name="Lien Social",
+                    value=social_link,
                     inline=False
                 )
 
@@ -749,14 +732,9 @@ class ClankerMonitor(commands.Cog):
                         
                         if created_at > self.last_check_time and contract_address not in self.seen_tokens:
                             logger.info(f"Found new token: {token.get('name')} ({contract_address})")
-                            
-                            if self._should_process_token(token):
-                                logger.info(f"Token {token.get('name')} has valid social links, sending notification")
-                                await self._send_clanker_notification(token, self.channel)
-                                self.seen_tokens.add(contract_address)
-                                self._save_seen_tokens()
-                            else:
-                                logger.debug(f"Token {token.get('name')} skipped - no valid social links")
+                            await self._send_clanker_notification(token, self.channel)
+                            self.seen_tokens.add(contract_address)
+                            self._save_seen_tokens()
 
                     # Mettre à jour le timestamp du dernier check
                     self.last_check_time = current_time
