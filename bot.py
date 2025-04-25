@@ -9,8 +9,6 @@ import discord
 from discord.ext import tasks, commands
 import requests
 from dotenv import load_dotenv
-import httpx
-import feedparser
 
 # Configure logging
 logging.basicConfig(
@@ -29,15 +27,12 @@ DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
 # Constants
-DEXSCREENER_API_URL = "https://api.dexscreener.com/latest/dex/tokens/base"  # URL pour Base
-TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
-CLANKER_API_URL = "https://www.clanker.world/api"
+DEXSCREENER_API_URL = "https://api.dexscreener.com/latest/dex/tokens/base"
 MONITORED_CHAINS = {
     "base": "Base"
 }
 POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
-SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 MONITOR_STATES_FILE = "monitor_states.json"
 
 class TokenMonitor(commands.Cog):
@@ -46,14 +41,6 @@ class TokenMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.active_chains = self._load_monitor_states()
-        self.seen_trump_posts = set()
-        self.last_check_time = None
-        
-        # Liste des tickers crypto à surveiller
-        self.crypto_tickers = {
-            'BTC', 'ETH', 'XRP', 'SOL', 'SUI', 'DOGE', 'SHIB', 'BNB', 'ADA',
-            'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI', 'XLM', 'ATOM'
-        }
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen token addresses from file."""
@@ -96,8 +83,7 @@ class TokenMonitor(commands.Cog):
         """Save current monitor states to file."""
         try:
             current_states = {
-                'chains': self.active_chains,
-                'clanker': self.bot.get_cog('ClankerMonitor').is_active if self.bot.get_cog('ClankerMonitor') else True
+                'chains': self.active_chains
             }
             with open(MONITOR_STATES_FILE, 'w') as f:
                 json.dump(current_states, f)
@@ -123,6 +109,10 @@ class TokenMonitor(commands.Cog):
         """Afficher le statut du monitoring"""
         status_message = "📊 Statut du monitoring:\n"
         base_status = "✅ Activé" if self.active_chains.get("base", False) else "❌ Désactivé"
+        status_message += f"Base: {base_status}"
+        await ctx.send(status_message)
+
+    @commands.command()
         status_message += f"Base: {base_status}\n"
         
         # Ajouter le statut de Clanker
