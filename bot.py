@@ -610,13 +610,55 @@ class Bot(commands.Bot):
     async def setup_hook(self):
         """Initialize the bot's cogs and start monitoring tasks."""
         # Add cogs
-        await self.add_cog(TokenMonitor(self))
-        await self.add_cog(ClankerMonitor(self))
+        token_monitor = TokenMonitor(self)
+        clanker_monitor = ClankerMonitor(self)
+        
+        await self.add_cog(token_monitor)
+        await self.add_cog(clanker_monitor)
+        
+        # Cache initial tokens before starting monitoring
+        try:
+            headers = {
+                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0'
+            }
+            
+            logger.info("Caching initial tokens...")
+            response = requests.get(DEXSCREENER_API_URL, headers=headers)
+            response.raise_for_status()
+            tokens = response.json()
+            
+            # Add all current tokens to seen_tokens
+            for token in tokens:
+                chain_id = token.get('chainId', '').lower()
+                token_address = token.get('tokenAddress')
+                if chain_id in MONITORED_CHAINS and token_address:
+                    token_key = f"{chain_id}:{token_address}"
+                    token_monitor.seen_tokens.add(token_key)
+            
+            logger.info(f"Cached {len(token_monitor.seen_tokens)} initial tokens")
+            
+            # Cache initial Clanker tokens
+            logger.info("Caching initial Clanker tokens...")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
+                response.raise_for_status()
+                clanker_tokens = response.json()
+                
+                for token in clanker_tokens:
+                    token_address = token.get('address')
+                    if token_address:
+                        clanker_monitor.seen_tokens.add(token_address)
+                
+                logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
+                
+        except Exception as e:
+            logger.error(f"Error caching initial tokens: {e}")
         
         # Start monitoring tasks
-        self.get_cog('TokenMonitor').monitor_tokens.start()
-        self.get_cog('TokenMonitor').check_trump_posts.start()
-        self.get_cog('ClankerMonitor').monitor_clanker.start()
+        token_monitor.monitor_tokens.start()
+        token_monitor.check_trump_posts.start()
+        clanker_monitor.monitor_clanker.start()
 
     async def on_ready(self):
         """Called when the bot is ready."""
