@@ -10,6 +10,7 @@ from discord.ext import tasks, commands
 import requests
 from dotenv import load_dotenv
 import httpx
+import feedparser
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +30,7 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
 # Constants
 DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
+TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/@realDonaldTrump.rss"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -175,73 +177,60 @@ class TokenMonitor(commands.Cog):
             # Send initial message
             status_msg = await ctx.send("🔍 Recherche du dernier post de Trump...")
             
-            # Using Truth Social API to get Trump's recent posts
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    "https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses",
-                    headers={
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                    }
-                )
-                
-                if response.status_code != 200:
-                    await status_msg.edit(content="❌ Erreur lors de la récupération des posts de Trump.")
-                    return
-                
-                posts = response.json()
-                
-                if not posts:
-                    await status_msg.edit(content="❌ Aucun post récent trouvé de Trump.")
-                    return
-                
-                # Get the latest post
-                latest_post = posts[0]
-                post_id = latest_post['id']
-                content = latest_post['content']
-                
-                # Recherche des tickers crypto dans le post
-                found_tickers = set()
-                words = content.split()
-                for word in words:
-                    # Enlever le $ si présent et convertir en majuscules
-                    ticker = word.strip('$').upper()
-                    if ticker in self.crypto_tickers:
-                        found_tickers.add(ticker)
-                
-                # Delete the status message
-                await status_msg.delete()
-                
-                # Create and send embed
-                embed = discord.Embed(
-                    title="🔄 Dernier Post de Trump",
-                    description="Dernier post de Donald Trump sur Truth Social",
-                    color=discord.Color.gold(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
+            # Using Truth Social RSS feed to get Trump's recent posts
+            feed = feedparser.parse(TRUTH_SOCIAL_RSS_URL)
+            
+            if not feed.entries:
+                await status_msg.edit(content="❌ Aucun post récent trouvé de Trump.")
+                return
+            
+            # Get the latest post
+            latest_post = feed.entries[0]
+            post_id = latest_post.id.split('/')[-1]  # Extract post ID from the URL
+            content = latest_post.description
+            
+            # Recherche des tickers crypto dans le post
+            found_tickers = set()
+            words = content.split()
+            for word in words:
+                # Enlever le $ si présent et convertir en majuscules
+                ticker = word.strip('$').upper()
+                if ticker in self.crypto_tickers:
+                    found_tickers.add(ticker)
+            
+            # Delete the status message
+            await status_msg.delete()
+            
+            # Create and send embed
+            embed = discord.Embed(
+                title="🔄 Dernier Post de Trump",
+                description="Dernier post de Donald Trump sur Truth Social",
+                color=discord.Color.gold(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            embed.add_field(
+                name="Message",
+                value=content[:1000] + "..." if len(content) > 1000 else content,
+                inline=False
+            )
+            
+            if found_tickers:
                 embed.add_field(
-                    name="Message",
-                    value=content[:1000] + "..." if len(content) > 1000 else content,
+                    name="Cryptos mentionnées",
+                    value=", ".join([f"${ticker}" for ticker in found_tickers]),
                     inline=False
                 )
-                
-                if found_tickers:
-                    embed.add_field(
-                        name="Cryptos mentionnées",
-                        value=", ".join([f"${ticker}" for ticker in found_tickers]),
-                        inline=False
-                    )
-                
-                embed.add_field(
-                    name="Lien",
-                    value=f"https://truthsocial.com/@realDonaldTrump/posts/{post_id}",
-                    inline=False
-                )
-                
-                await ctx.send(embed=embed)
-                logger.info(f"Sent latest Trump post notification with ID {post_id}")
-                
+            
+            embed.add_field(
+                name="Lien",
+                value=latest_post.link,
+                inline=False
+            )
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Sent latest Trump post notification with ID {post_id}")
+            
         except Exception as e:
             logger.error(f"Error fetching latest Trump post: {e}")
             if status_msg:
@@ -379,80 +368,67 @@ class TokenMonitor(commands.Cog):
     @tasks.loop(seconds=10)
     async def check_trump_posts(self):
         try:
-            # Using Truth Social API to get Trump's recent posts
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    "https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses",
-                    headers={
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                    }
-                )
+            # Using Truth Social RSS feed to get Trump's recent posts
+            feed = feedparser.parse(TRUTH_SOCIAL_RSS_URL)
+            
+            for entry in feed.entries:
+                post_id = entry.id.split('/')[-1]  # Extract post ID from the URL
                 
-                if response.status_code != 200:
-                    return
-                
-                posts = response.json()
-                
-                for post in posts:
-                    post_id = post['id']
+                # Skip if we've already seen this post
+                if post_id in self.seen_trump_posts:
+                    continue
                     
-                    # Skip if we've already seen this post
-                    if post_id in self.seen_trump_posts:
-                        continue
+                content = entry.description
+                
+                # Recherche des tickers crypto dans le post
+                found_tickers = set()
+                words = content.split()
+                for word in words:
+                    # Enlever le $ si présent et convertir en majuscules
+                    ticker = word.strip('$').upper()
+                    if ticker in self.crypto_tickers:
+                        found_tickers.add(ticker)
+                
+                # Si des tickers sont trouvés, envoyer une notification
+                if found_tickers:
+                    channel = self.bot.get_channel(int(os.getenv('CHANNEL_ID')))
+                    
+                    if channel:
+                        embed = discord.Embed(
+                            title="🚨 Trump mentionne des cryptos!",
+                            description=f"Donald Trump vient de mentionner des cryptos sur Truth Social!",
+                            color=discord.Color.gold()
+                        )
                         
-                    content = post['content']
-                    
-                    # Recherche des tickers crypto dans le post
-                    found_tickers = set()
-                    words = content.split()
-                    for word in words:
-                        # Enlever le $ si présent et convertir en majuscules
-                        ticker = word.strip('$').upper()
-                        if ticker in self.crypto_tickers:
-                            found_tickers.add(ticker)
-                    
-                    # Si des tickers sont trouvés, envoyer une notification
-                    if found_tickers:
-                        channel_id = int(os.getenv('DISCORD_CHANNEL_ID'))
-                        channel = self.get_channel(channel_id)
+                        embed.add_field(
+                            name="Cryptos mentionnées",
+                            value=", ".join([f"${ticker}" for ticker in found_tickers]),
+                            inline=False
+                        )
                         
-                        if channel:
-                            embed = discord.Embed(
-                                title="🚨 Trump mentionne des cryptos!",
-                                description=f"Donald Trump vient de mentionner des cryptos sur Truth Social!",
-                                color=discord.Color.gold()
-                            )
-                            
-                            embed.add_field(
-                                name="Cryptos mentionnées",
-                                value=", ".join([f"${ticker}" for ticker in found_tickers]),
-                                inline=False
-                            )
-                            
-                            embed.add_field(
-                                name="Message",
-                                value=content[:1000] + "..." if len(content) > 1000 else content,
-                                inline=False
-                            )
-                            
-                            embed.add_field(
-                                name="Lien",
-                                value=f"https://truthsocial.com/@realDonaldTrump/posts/{post_id}",
-                                inline=False
-                            )
-                            
-                            await channel.send(embed=embed)
-                    
-                    # Ajouter le post aux posts vus
-                    self.seen_trump_posts.add(post_id)
-                    
-                # Garder seulement les 100 derniers posts en mémoire
-                if len(self.seen_trump_posts) > 100:
-                    self.seen_trump_posts = set(list(self.seen_trump_posts)[-100:])
-                    
+                        embed.add_field(
+                            name="Message",
+                            value=content[:1000] + "..." if len(content) > 1000 else content,
+                            inline=False
+                        )
+                        
+                        embed.add_field(
+                            name="Lien",
+                            value=entry.link,
+                            inline=False
+                        )
+                        
+                        await channel.send(embed=embed)
+                
+                # Ajouter le post aux posts vus
+                self.seen_trump_posts.add(post_id)
+                
+            # Garder seulement les 100 derniers posts en mémoire
+            if len(self.seen_trump_posts) > 100:
+                self.seen_trump_posts = set(list(self.seen_trump_posts)[-100:])
+                
         except Exception as e:
-            print(f"Erreur lors de la vérification des posts de Trump: {e}")
+            logger.error(f"Error checking Trump posts: {e}")
 
     @check_trump_posts.before_loop
     async def before_check_trump_posts(self):
