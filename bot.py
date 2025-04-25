@@ -33,13 +33,12 @@ DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 CLANKER_API_URL = "https://www.clanker.world/api"
 MONITORED_CHAINS = {
-    "base": "Base",
-    "solana": "Solana"
+    "base": "Base"
 }
 POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
 SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
-MONITOR_STATES_FILE = "monitor_states.json"  # Nouveau fichier pour sauvegarder les états
+MONITOR_STATES_FILE = "monitor_states.json"
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -82,18 +81,15 @@ class TokenMonitor(commands.Cog):
                 with open(MONITOR_STATES_FILE, 'r') as f:
                     states = json.load(f)
                     return states.get('chains', {
-                        "base": True,
-                        "solana": True
+                        "base": True
                     })
             return {
-                "base": True,
-                "solana": True
+                "base": True
             }
         except Exception as e:
             logger.error(f"Error loading monitor states: {e}")
             return {
-                "base": True,
-                "solana": True
+                "base": True
             }
 
     def _save_monitor_states(self):
@@ -123,27 +119,18 @@ class TokenMonitor(commands.Cog):
         await ctx.send("❌ Monitoring désactivé pour Base")
 
     @commands.command()
-    async def solanaon(self, ctx):
-        """Activer le monitoring pour Solana"""
-        self.active_chains["solana"] = True
-        self._save_monitor_states()
-        await ctx.send("✅ Monitoring activé pour Solana")
-
-    @commands.command()
-    async def solanaoff(self, ctx):
-        """Désactiver le monitoring pour Solana"""
-        self.active_chains["solana"] = False
-        self._save_monitor_states()
-        await ctx.send("❌ Monitoring désactivé pour Solana")
-
-    @commands.command()
     async def status(self, ctx):
-        """Afficher le statut du monitoring pour chaque chaîne"""
+        """Afficher le statut du monitoring"""
         status_message = "📊 Statut du monitoring:\n"
-        for chain_id, is_active in self.active_chains.items():
-            chain_name = MONITORED_CHAINS[chain_id]
-            status = "✅ Activé" if is_active else "❌ Désactivé"
-            status_message += f"{chain_name}: {status}\n"
+        base_status = "✅ Activé" if self.active_chains.get("base", False) else "❌ Désactivé"
+        status_message += f"Base: {base_status}\n"
+        
+        # Ajouter le statut de Clanker
+        clanker_monitor = self.bot.get_cog('ClankerMonitor')
+        if clanker_monitor:
+            clanker_status = "✅ Activé" if clanker_monitor.is_active else "❌ Désactivé"
+            status_message += f"Clanker: {clanker_status}"
+        
         await ctx.send(status_message)
 
     @commands.command()
@@ -198,7 +185,7 @@ class TokenMonitor(commands.Cog):
                 # Send token notification
                 await self._send_token_notification(latest_token, ctx.channel, "📊 Dernier Token sur")
             else:
-                await status_msg.edit(content="❌ Aucun token récent trouvé sur Base ou Solana.")
+                await status_msg.edit(content="❌ Aucun token récent trouvé sur Base.")
 
         except Exception as e:
             logger.error(f"Error fetching latest token: {e}")
@@ -297,8 +284,8 @@ class TokenMonitor(commands.Cog):
             chain_id = token['chainId'].lower()
             chain_name = MONITORED_CHAINS.get(chain_id, chain_id)
             
-            # Set color based on chain
-            color = discord.Color.blue() if chain_id == 'base' else discord.Color.orange()
+            # Set color for Base
+            color = discord.Color.blue()
             
             embed = discord.Embed(
                 title=f"{title_prefix} {chain_name}",
@@ -317,10 +304,9 @@ class TokenMonitor(commands.Cog):
             )
 
             # Add chain indicator emoji
-            chain_emoji = "⚡" if chain_id == 'base' else "☀️"
             embed.add_field(
                 name="Blockchain",
-                value=f"{chain_emoji} {chain_name}",
+                value=f"⚡ {chain_name}",
                 inline=True
             )
 
@@ -341,8 +327,7 @@ class TokenMonitor(commands.Cog):
             if token.get('url'):
                 dexscreener_url = token['url']
             else:
-                chain_path = 'base' if chain_id == 'base' else 'solana'
-                dexscreener_url = f"https://dexscreener.com/{chain_path}/{token['tokenAddress']}"
+                dexscreener_url = f"https://dexscreener.com/base/{token['tokenAddress']}"
             
             embed.add_field(
                 name="🔍 Dexscreener",
@@ -530,7 +515,7 @@ class ClankerMonitor(commands.Cog):
         """Save current Clanker monitor state to file."""
         try:
             current_states = {
-                'chains': self.bot.get_cog('TokenMonitor').active_chains if self.bot.get_cog('TokenMonitor') else {"base": True, "solana": True},
+                'chains': self.bot.get_cog('TokenMonitor').active_chains if self.bot.get_cog('TokenMonitor') else {"base": True},
                 'clanker': self.is_active
             }
             with open(MONITOR_STATES_FILE, 'w') as f:
@@ -572,11 +557,19 @@ class ClankerMonitor(commands.Cog):
         """Determine if a token should be processed based on filters."""
         # Vérifier si le token a un cast_hash
         if not token_data.get('cast_hash'):
+            logger.debug(f"Token {token_data.get('name')} skipped - no cast_hash")
             return False
 
         # Vérifier si c'est un tweet ou un cast Warpcast
         cast_hash = token_data['cast_hash']
-        return 'twitter.com' in cast_hash or not cast_hash.startswith('http')
+        is_valid = 'twitter.com' in cast_hash or not cast_hash.startswith('http')
+        
+        if is_valid:
+            logger.info(f"Token {token_data.get('name')} has valid social link: {cast_hash}")
+        else:
+            logger.debug(f"Token {token_data.get('name')} has invalid social link: {cast_hash}")
+        
+        return is_valid
 
     @commands.command()
     async def clankeron(self, ctx):
@@ -744,25 +737,43 @@ class ClankerMonitor(commands.Cog):
                         return
 
                     tokens = data["data"]
+                    logger.info(f"Fetched {len(tokens)} tokens from Clanker API")
+
                     for token in tokens:
-                        # Si c'est le premier démarrage, on enregistre juste les tokens sans envoyer de notification
-                        if self.last_check_time is None:
-                            if self._should_process_token(token):
-                                contract_address = token.get('contract_address')
-                                if contract_address:
-                                    self.seen_tokens.add(contract_address)
+                        contract_address = token.get('contract_address')
+                        if not contract_address:
                             continue
 
-                        # Pour les démarrages suivants, on vérifie la date de création
+                        # Log pour le débogage
+                        logger.debug(f"Processing token: {token.get('name')} ({contract_address})")
+                        
+                        # Si c'est le premier démarrage
+                        if self.last_check_time is None:
+                            if self._should_process_token(token):
+                                self.seen_tokens.add(contract_address)
+                                logger.info(f"First run: Added {token.get('name')} to seen tokens")
+                            continue
+
+                        # Vérifier si c'est un nouveau token
                         created_at = self._parse_datetime(token.get('created_at'))
-                        if created_at > self.last_check_time:
-                            contract_address = token.get('contract_address')
-                            if contract_address and contract_address not in self.seen_tokens and self._should_process_token(token):
+                        
+                        # Log pour le débogage des dates
+                        logger.debug(f"Token {token.get('name')} created at: {created_at}, last check: {self.last_check_time}")
+
+                        if created_at > self.last_check_time and contract_address not in self.seen_tokens:
+                            logger.info(f"Found new token: {token.get('name')} ({contract_address})")
+                            
+                            if self._should_process_token(token):
+                                logger.info(f"Token {token.get('name')} has valid social links, sending notification")
                                 await self._send_clanker_notification(token, self.channel)
                                 self.seen_tokens.add(contract_address)
                                 self._save_seen_tokens()
+                            else:
+                                logger.debug(f"Token {token.get('name')} skipped - no valid social links")
 
+                    # Mettre à jour le timestamp du dernier check
                     self.last_check_time = current_time
+                    logger.debug(f"Updated last_check_time to {current_time}")
 
                 except httpx.ConnectError as e:
                     logger.error(f"Connection error to Clanker API: {e}")
