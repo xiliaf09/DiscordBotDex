@@ -547,9 +547,15 @@ class ClankerMonitor(commands.Cog):
         if cast_hash and 'twitter.com' in cast_hash:
             tweet_link = cast_hash
 
-        # Si c'est un cast Warpcast (hash sans http)
+        # Si c'est un cast Warpcast
         elif cast_hash and not cast_hash.startswith('http'):
-            warpcast_link = f"https://warpcast.com/{cast_hash}"
+            # Extraire le nom d'utilisateur et le hash du cast
+            parts = cast_hash.split('/')
+            if len(parts) == 2:
+                username, hash_id = parts
+                warpcast_link = f"https://warpcast.com/{username}/{hash_id}"
+            else:
+                logger.warning(f"Format de cast_hash Warpcast invalide: {cast_hash}")
 
         return tweet_link, warpcast_link
 
