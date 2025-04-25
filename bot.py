@@ -537,52 +537,34 @@ class ClankerMonitor(commands.Cog):
             logger.error(f"Error parsing datetime {datetime_str}: {e}")
             return datetime.now(timezone.utc)
 
+    def _should_process_token(self, token_data: Dict) -> bool:
+        """Determine if a token should be processed based on filters."""
+        # Vérifier si le token a un social_context
+        social_context = token_data.get('social_context', '')
+        if not social_context:
+            logger.debug(f"Token {token_data.get('name')} skipped - no social_context")
+            return False
+
+        # Vérifier si c'est un tweet ou un cast Warpcast
+        if 'twitter.com' in social_context or 'warpcast.com' in social_context:
+            logger.info(f"Token {token_data.get('name')} has valid social link: {social_context}")
+            return True
+            
+        logger.debug(f"Token {token_data.get('name')} has invalid social link: {social_context}")
+        return False
+
     def _get_social_links(self, token_data: Dict) -> tuple:
         """Extract tweet and warpcast links from token data."""
         tweet_link = None
         warpcast_link = None
-        cast_hash = token_data.get('cast_hash', '')
+        social_context = token_data.get('social_context', '')
 
-        # Si c'est un lien Twitter
-        if cast_hash and 'twitter.com' in cast_hash:
-            tweet_link = cast_hash
-
-        # Si c'est un cast Warpcast
-        elif cast_hash and not cast_hash.startswith('http'):
-            # Extraire le nom d'utilisateur et le hash du cast
-            parts = cast_hash.split('/')
-            if len(parts) == 2:
-                username, hash_id = parts
-                warpcast_link = f"https://warpcast.com/{username}/{hash_id}"
-            else:
-                logger.warning(f"Format de cast_hash Warpcast invalide: {cast_hash}")
+        if 'twitter.com' in social_context:
+            tweet_link = social_context
+        elif 'warpcast.com' in social_context:
+            warpcast_link = social_context
 
         return tweet_link, warpcast_link
-
-    def _should_process_token(self, token_data: Dict) -> bool:
-        """Determine if a token should be processed based on filters."""
-        # Log complet des données du token pour le débogage
-        logger.info(f"Processing token data: {json.dumps(token_data, indent=2)}")
-
-        # Vérifier si le token a un cast_hash
-        cast_hash = token_data.get('cast_hash')
-        if not cast_hash:
-            logger.debug(f"Token {token_data.get('name')} skipped - no cast_hash")
-            return True  # On accepte temporairement tous les tokens pour debug
-
-        # Vérifier si c'est un tweet ou un cast Warpcast
-        # Si c'est un lien Twitter valide
-        if 'twitter.com' in cast_hash:
-            logger.info(f"Token {token_data.get('name')} has valid Twitter link: {cast_hash}")
-            return True
-            
-        # Vérifier si c'est un cast Warpcast valide (doit être un hash sans http et sans caractères spéciaux)
-        if not cast_hash.startswith('http'):
-            logger.info(f"Token {token_data.get('name')} has valid Warpcast link: {cast_hash}")
-            return True
-            
-        logger.debug(f"Token {token_data.get('name')} has invalid social link: {cast_hash}")
-        return False
 
     @commands.command()
     async def clankeron(self, ctx):
@@ -651,11 +633,7 @@ class ClankerMonitor(commands.Cog):
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
-            # Log complet des données du token pour le débogage
-            logger.info(f"Sending notification for token: {json.dumps(token_data, indent=2)}")
-
             tweet_link, warpcast_link = self._get_social_links(token_data)
-            logger.info(f"Generated links - Tweet: {tweet_link}, Warpcast: {warpcast_link}")
             
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
@@ -722,7 +700,6 @@ class ClankerMonitor(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
-            logger.error(f"Token data that caused error: {json.dumps(token_data, indent=2)}")
             await channel.send("❌ Erreur lors de l'envoi de la notification du token.")
 
     @tasks.loop(seconds=POLL_INTERVAL)
@@ -767,15 +744,9 @@ class ClankerMonitor(commands.Cog):
                         if not contract_address:
                             continue
 
-                        # Log pour le débogage
-                        logger.debug(f"Processing token: {token.get('name')} ({contract_address})")
-                        
                         # Vérifier si c'est un nouveau token
                         created_at = self._parse_datetime(token.get('created_at'))
                         
-                        # Log pour le débogage des dates
-                        logger.debug(f"Token {token.get('name')} created at: {created_at}, last check: {self.last_check_time}")
-
                         if created_at > self.last_check_time and contract_address not in self.seen_tokens:
                             logger.info(f"Found new token: {token.get('name')} ({contract_address})")
                             
@@ -789,7 +760,6 @@ class ClankerMonitor(commands.Cog):
 
                     # Mettre à jour le timestamp du dernier check
                     self.last_check_time = current_time
-                    logger.debug(f"Updated last_check_time to {current_time}")
 
                 except httpx.ConnectError as e:
                     logger.error(f"Connection error to Clanker API: {e}")
