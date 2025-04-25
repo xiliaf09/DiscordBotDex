@@ -562,14 +562,19 @@ class ClankerMonitor(commands.Cog):
 
         # Vérifier si c'est un tweet ou un cast Warpcast
         cast_hash = token_data['cast_hash']
-        is_valid = 'twitter.com' in cast_hash or not cast_hash.startswith('http')
         
-        if is_valid:
-            logger.info(f"Token {token_data.get('name')} has valid social link: {cast_hash}")
-        else:
-            logger.debug(f"Token {token_data.get('name')} has invalid social link: {cast_hash}")
-        
-        return is_valid
+        # Vérifier si c'est un lien Twitter valide
+        if 'twitter.com' in cast_hash:
+            logger.info(f"Token {token_data.get('name')} has valid Twitter link: {cast_hash}")
+            return True
+            
+        # Vérifier si c'est un cast Warpcast valide (doit être un hash sans http et sans caractères spéciaux)
+        if not cast_hash.startswith('http') and cast_hash.isalnum():
+            logger.info(f"Token {token_data.get('name')} has valid Warpcast link: {cast_hash}")
+            return True
+            
+        logger.debug(f"Token {token_data.get('name')} has invalid social link: {cast_hash}")
+        return False
 
     @commands.command()
     async def clankeron(self, ctx):
@@ -739,6 +744,14 @@ class ClankerMonitor(commands.Cog):
                     tokens = data["data"]
                     logger.info(f"Fetched {len(tokens)} tokens from Clanker API")
 
+                    # Si c'est le premier démarrage, initialiser last_check_time avec la date du token le plus récent
+                    if self.last_check_time is None and tokens:
+                        first_token = tokens[0]
+                        created_at = self._parse_datetime(first_token.get('created_at'))
+                        self.last_check_time = created_at
+                        logger.info(f"First run: Initialized last_check_time to {self.last_check_time}")
+                        return
+
                     for token in tokens:
                         contract_address = token.get('contract_address')
                         if not contract_address:
@@ -747,13 +760,6 @@ class ClankerMonitor(commands.Cog):
                         # Log pour le débogage
                         logger.debug(f"Processing token: {token.get('name')} ({contract_address})")
                         
-                        # Si c'est le premier démarrage
-                        if self.last_check_time is None:
-                            if self._should_process_token(token):
-                                self.seen_tokens.add(contract_address)
-                                logger.info(f"First run: Added {token.get('name')} to seen tokens")
-                            continue
-
                         # Vérifier si c'est un nouveau token
                         created_at = self._parse_datetime(token.get('created_at'))
                         
