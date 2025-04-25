@@ -493,7 +493,7 @@ class ClankerMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.is_active = self._load_monitor_state()
-        self.last_check_time = None
+        self.last_check_time = datetime.now(timezone.utc)  # Initialisation avec timezone
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -538,6 +538,20 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error saving monitor states: {e}")
 
+    def _parse_datetime(self, datetime_str: str) -> datetime:
+        """Parse datetime string to datetime object with UTC timezone."""
+        try:
+            # Remplacer 'Z' par '+00:00' pour la compatibilité
+            datetime_str = datetime_str.replace('Z', '+00:00')
+            # Parser la date et s'assurer qu'elle a une timezone
+            dt = datetime.fromisoformat(datetime_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception as e:
+            logger.error(f"Error parsing datetime {datetime_str}: {e}")
+            return datetime.now(timezone.utc)
+
     def _get_social_links(self, token_data: Dict) -> tuple:
         """Extract tweet and warpcast links from token data."""
         tweet_link = None
@@ -563,6 +577,20 @@ class ClankerMonitor(commands.Cog):
         # Vérifier si c'est un tweet ou un cast Warpcast
         cast_hash = token_data['cast_hash']
         return 'twitter.com' in cast_hash or not cast_hash.startswith('http')
+
+    @commands.command()
+    async def clankeron(self, ctx):
+        """Activer le monitoring pour Clanker"""
+        self.is_active = True
+        self._save_monitor_state()
+        await ctx.send("✅ Monitoring Clanker activé")
+
+    @commands.command()
+    async def clankeroff(self, ctx):
+        """Désactiver le monitoring pour Clanker"""
+        self.is_active = False
+        self._save_monitor_state()
+        await ctx.send("❌ Monitoring Clanker désactivé")
 
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
@@ -676,7 +704,7 @@ class ClankerMonitor(commands.Cog):
                             continue
 
                         # Pour les démarrages suivants, on vérifie la date de création
-                        created_at = datetime.fromisoformat(token.get('created_at').replace('Z', '+00:00'))
+                        created_at = self._parse_datetime(token.get('created_at'))
                         if created_at > self.last_check_time:
                             contract_address = token.get('contract_address')
                             if contract_address and contract_address not in self.seen_tokens and self._should_process_token(token):
@@ -702,20 +730,6 @@ class ClankerMonitor(commands.Cog):
     async def before_monitor_clanker(self):
         """Wait for bot to be ready before starting the Clanker monitoring loop."""
         await self.bot.wait_until_ready()
-
-    @commands.command()
-    async def clankeron(self, ctx):
-        """Activer le monitoring pour Clanker"""
-        self.is_active = True
-        self._save_monitor_state()
-        await ctx.send("✅ Monitoring Clanker activé")
-
-    @commands.command()
-    async def clankeroff(self, ctx):
-        """Désactiver le monitoring pour Clanker"""
-        self.is_active = False
-        self._save_monitor_state()
-        await ctx.send("❌ Monitoring Clanker désactivé")
 
 class Bot(commands.Bot):
     def __init__(self):
