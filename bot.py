@@ -170,13 +170,18 @@ class TokenMonitor(commands.Cog):
             response = requests.get(DEXSCREENER_API_URL, headers=headers)
             response.raise_for_status()
             tokens = response.json()
+            
+            logger.info(f"Received {len(tokens)} tokens from API")
+            logger.info(f"Raw tokens data: {json.dumps(tokens[:2], indent=2)}")  # Log les 2 premiers tokens pour debug
 
             # Find the latest token from monitored chains
             latest_token = None
             for token in tokens:
                 chain_id = token.get('chainId', '').lower()
-                if chain_id in MONITORED_CHAINS and self.active_chains.get(chain_id, False):
+                logger.info(f"Processing token with chain_id: {chain_id}")
+                if chain_id == "base":  # Vérifie spécifiquement pour Base
                     latest_token = token
+                    logger.info(f"Found Base token: {token.get('tokenAddress')}")
                     break
 
             if latest_token:
@@ -188,7 +193,7 @@ class TokenMonitor(commands.Cog):
                 await status_msg.edit(content="❌ Aucun token récent trouvé sur Base.")
 
         except Exception as e:
-            logger.error(f"Error fetching latest token: {e}")
+            logger.error(f"Error fetching latest token: {e}", exc_info=True)
             if status_msg:
                 await status_msg.edit(content="❌ Erreur lors de la recherche du dernier token.")
             else:
@@ -361,38 +366,32 @@ class TokenMonitor(commands.Cog):
             tokens = response.json()
             logger.info(f"Received {len(tokens)} tokens from API")
 
-            # Filter for monitored blockchain tokens
+            # Filter for Base tokens
             new_tokens = []
             for token in tokens:
                 chain_id = token.get('chainId', '').lower()
                 token_address = token.get('tokenAddress')
                 
-                if chain_id in MONITORED_CHAINS and token_address and self.active_chains.get(chain_id, False):
+                if chain_id == "base" and token_address:  # Vérifie spécifiquement pour Base
                     token_key = f"{chain_id}:{token_address}"
                     if token_key not in self.seen_tokens:
+                        logger.info(f"New Base token found: {token_address}")
                         new_tokens.append(token)
                         self.seen_tokens.add(token_key)
-                        logger.info(f"New token detected - Chain: {chain_id}, Address: {token_address}")
 
             # Process new tokens
             for token in new_tokens:
                 await self._send_token_notification(token, self.channel)
 
             # Save updated seen tokens
-            self._save_seen_tokens()
-
             if new_tokens:
-                logger.info(f"Found {len(new_tokens)} new tokens")
-            else:
-                logger.debug("No new tokens found")
+                self._save_seen_tokens()
+                logger.info(f"Found and processed {len(new_tokens)} new Base tokens")
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching tokens: {e}")
-            if hasattr(e, 'response') and e.response:
-                logger.error(f"Response status: {e.response.status_code}")
-                logger.error(f"Response text: {e.response.text}")
+            logger.error(f"Error fetching tokens: {e}", exc_info=True)
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error in monitor_tokens: {e}", exc_info=True)
 
     @monitor_tokens.before_loop
     async def before_monitor_tokens(self):
