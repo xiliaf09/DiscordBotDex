@@ -168,6 +168,87 @@ class TokenMonitor(commands.Cog):
             else:
                 await ctx.send("❌ Erreur lors de la recherche du dernier token.")
 
+    @commands.command()
+    async def lasttrump(self, ctx):
+        """Fetch and display the latest post from Trump on Truth Social"""
+        try:
+            # Send initial message
+            status_msg = await ctx.send("🔍 Recherche du dernier post de Trump...")
+            
+            # Using Truth Social API to get Trump's recent posts
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    "https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses",
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    }
+                )
+                
+                if response.status_code != 200:
+                    await status_msg.edit(content="❌ Erreur lors de la récupération des posts de Trump.")
+                    return
+                
+                posts = response.json()
+                
+                if not posts:
+                    await status_msg.edit(content="❌ Aucun post récent trouvé de Trump.")
+                    return
+                
+                # Get the latest post
+                latest_post = posts[0]
+                post_id = latest_post['id']
+                content = latest_post['content']
+                
+                # Recherche des tickers crypto dans le post
+                found_tickers = set()
+                words = content.split()
+                for word in words:
+                    # Enlever le $ si présent et convertir en majuscules
+                    ticker = word.strip('$').upper()
+                    if ticker in self.crypto_tickers:
+                        found_tickers.add(ticker)
+                
+                # Delete the status message
+                await status_msg.delete()
+                
+                # Create and send embed
+                embed = discord.Embed(
+                    title="🔄 Dernier Post de Trump",
+                    description="Dernier post de Donald Trump sur Truth Social",
+                    color=discord.Color.gold(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                
+                embed.add_field(
+                    name="Message",
+                    value=content[:1000] + "..." if len(content) > 1000 else content,
+                    inline=False
+                )
+                
+                if found_tickers:
+                    embed.add_field(
+                        name="Cryptos mentionnées",
+                        value=", ".join([f"${ticker}" for ticker in found_tickers]),
+                        inline=False
+                    )
+                
+                embed.add_field(
+                    name="Lien",
+                    value=f"https://truthsocial.com/@realDonaldTrump/posts/{post_id}",
+                    inline=False
+                )
+                
+                await ctx.send(embed=embed)
+                logger.info(f"Sent latest Trump post notification with ID {post_id}")
+                
+        except Exception as e:
+            logger.error(f"Error fetching latest Trump post: {e}")
+            if status_msg:
+                await status_msg.edit(content="❌ Erreur lors de la recherche du dernier post de Trump.")
+            else:
+                await ctx.send("❌ Erreur lors de la recherche du dernier post de Trump.")
+
     async def _send_token_notification(self, token: Dict, channel: discord.TextChannel, title_prefix="🆕 Nouveau Token Détecté"):
         """Send a Discord notification for a token."""
         try:

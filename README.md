@@ -19,6 +19,7 @@ Un bot Discord qui surveille les nouveaux tokens sur Base et Solana via DexScree
 - `!solanaoff` - Désactiver la surveillance de Solana
 - `!status` - Afficher le statut de surveillance des chaînes
 - `!lasttoken` - Afficher le dernier token détecté
+- `!lasttrump` - Afficher le dernier post de Trump sur Truth Social
 - `!test` - Tester le bon fonctionnement du bot
 
 ## Configuration
