@@ -1,8 +1,3 @@
-<<<<<<< HEAD
 discord.py==2.3.2
 requests==2.31.0
-=======
-discord.py==2.3.2
-requests==2.31.0
->>>>>>> 0d68e3ad1bd7740dfe677417200ac73a71980361
 python-dotenv==1.0.0 
