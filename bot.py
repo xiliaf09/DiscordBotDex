@@ -549,13 +549,20 @@ class ClankerMonitor(commands.Cog):
         deployment_method = "Interface Clanker"
         social_link = None
 
-        if 'twitter.com' in social_context:
+        # Vérifier si le lien est un lien Warpcast
+        if 'warpcast.com' in social_context or '/s0lverr/' in social_context:
+            deployment_method = "Warpcast"
+            # Si le lien ne commence pas par http, ajouter le préfixe
+            if not social_context.startswith(('http://', 'https://')):
+                social_link = f"https://warpcast.com{social_context if social_context.startswith('/') else '/' + social_context}"
+            else:
+                social_link = social_context
+        # Vérifier si le lien est un lien Twitter
+        elif 'twitter.com' in social_context or 'x.com' in social_context:
             deployment_method = "Twitter"
             social_link = social_context
-        elif 'warpcast.com' in social_context:
-            deployment_method = "Warpcast"
-            social_link = social_context
 
+        logger.info(f"Token deployment info - Method: {deployment_method}, Link: {social_link}, Context: {social_context}")
         return deployment_method, social_link
 
     @commands.command()
