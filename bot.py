@@ -479,6 +479,12 @@ class ClankerMonitor(commands.Cog):
         self.channel = None
         self.is_active = self._load_monitor_state()
         self.last_check_time = datetime.now(timezone.utc)  # Initialisation avec timezone
+        # Démarrer la boucle de monitoring
+        self.monitor_clanker.start()
+
+    def cog_unload(self):
+        """Called when the cog is unloaded."""
+        self.monitor_clanker.cancel()
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -700,7 +706,7 @@ class ClankerMonitor(commands.Cog):
                     return
 
             current_time = datetime.now(timezone.utc)
-            logger.debug(f"Checking for new Clanker tokens at {current_time}")
+            logger.info(f"Checking for new Clanker tokens at {current_time}")  # Changed to info for better visibility
 
             # Fetch latest Clanker deployments with timeout and SSL verification
             async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
@@ -714,7 +720,7 @@ class ClankerMonitor(commands.Cog):
                         return
 
                     tokens = data["data"]
-                    logger.debug(f"Fetched {len(tokens)} tokens from Clanker API")
+                    logger.info(f"Fetched {len(tokens)} tokens from Clanker API")  # Changed to info for better visibility
 
                     # Si c'est le premier démarrage, initialiser last_check_time avec la date du token le plus récent
                     if self.last_check_time is None and tokens:
@@ -739,7 +745,7 @@ class ClankerMonitor(commands.Cog):
 
                         # Vérifier si c'est un nouveau token
                         created_at = self._parse_datetime(token.get('created_at'))
-                        logger.debug(f"Checking token {token.get('name')} - Created: {created_at}, Last check: {self.last_check_time}")
+                        logger.info(f"Checking token {token.get('name')} - Created: {created_at}, Last check: {self.last_check_time}")  # Changed to info
                         
                         if created_at > self.last_check_time and contract_address not in self.seen_tokens:
                             logger.info(f"Found new token: {token.get('name')} ({contract_address})")
@@ -753,7 +759,7 @@ class ClankerMonitor(commands.Cog):
 
                     # Mettre à jour le timestamp du dernier check
                     self.last_check_time = current_time
-                    logger.debug(f"Updated last_check_time to {current_time}")
+                    logger.info(f"Updated last_check_time to {current_time}")  # Changed to info
 
                 except httpx.ConnectError as e:
                     logger.error(f"Connection error to Clanker API: {e}")
@@ -771,6 +777,7 @@ class ClankerMonitor(commands.Cog):
     async def before_monitor_clanker(self):
         """Wait for bot to be ready before starting the Clanker monitoring loop."""
         await self.bot.wait_until_ready()
+        logger.info("Starting Clanker monitoring loop")  # Added log to confirm loop start
 
 class Bot(commands.Bot):
     def __init__(self):
