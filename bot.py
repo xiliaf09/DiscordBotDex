@@ -296,6 +296,32 @@ class Bot(commands.Bot):
         """Setup tasks when bot is ready."""
         token_monitor = TokenMonitor(self)
         await self.add_cog(token_monitor)
+        
+        # Cache initial tokens before starting monitoring
+        try:
+            headers = {
+                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0'
+            }
+            
+            logger.info("Caching initial tokens...")
+            response = requests.get(DEXSCREENER_API_URL, headers=headers)
+            response.raise_for_status()
+            tokens = response.json()
+
+            # Add all current tokens to seen_tokens
+            for token in tokens:
+                chain_id = token.get('chainId', '').lower()
+                token_address = token.get('tokenAddress')
+                if chain_id in MONITORED_CHAINS and token_address:
+                    token_key = f"{chain_id}:{token_address}"
+                    token_monitor.seen_tokens.add(token_key)
+            
+            logger.info(f"Cached {len(token_monitor.seen_tokens)} initial tokens")
+        except Exception as e:
+            logger.error(f"Error caching initial tokens: {e}")
+
+        # Start monitoring
         token_monitor.monitor_tokens.start()
 
     async def on_ready(self):
