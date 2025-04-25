@@ -706,7 +706,7 @@ class ClankerMonitor(commands.Cog):
                     return
 
             current_time = datetime.now(timezone.utc)
-            logger.info(f"Checking for new Clanker tokens at {current_time}")  # Changed to info for better visibility
+            logger.info(f"Checking for new Clanker tokens at {current_time}")
 
             # Fetch latest Clanker deployments with timeout and SSL verification
             async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
@@ -720,20 +720,20 @@ class ClankerMonitor(commands.Cog):
                         return
 
                     tokens = data["data"]
-                    logger.info(f"Fetched {len(tokens)} tokens from Clanker API")  # Changed to info for better visibility
+                    logger.info(f"Fetched {len(tokens)} tokens from Clanker API")
 
-                    # Si c'est le premier démarrage, initialiser last_check_time avec la date du token le plus récent
-                    if self.last_check_time is None and tokens:
-                        first_token = tokens[0]
-                        created_at = self._parse_datetime(first_token.get('created_at'))
-                        self.last_check_time = created_at
-                        logger.info(f"First run: Initialized last_check_time to {self.last_check_time}")
+                    # Si c'est le premier démarrage
+                    if self.last_check_time is None:
+                        logger.info("First run - Initializing seen tokens")
                         # Ajouter tous les tokens actuels à seen_tokens
                         for token in tokens:
                             if contract_address := token.get('contract_address'):
                                 self.seen_tokens.add(contract_address)
-                        logger.info(f"Added {len(tokens)} existing tokens to seen_tokens")
+                                logger.debug(f"Added {token.get('name')} to seen tokens")
                         self._save_seen_tokens()
+                        # Initialiser last_check_time avec la date actuelle
+                        self.last_check_time = current_time
+                        logger.info(f"Initialized last_check_time to {current_time}")
                         return
 
                     new_tokens_found = False
@@ -745,9 +745,10 @@ class ClankerMonitor(commands.Cog):
 
                         # Vérifier si c'est un nouveau token
                         created_at = self._parse_datetime(token.get('created_at'))
-                        logger.info(f"Checking token {token.get('name')} - Created: {created_at}, Last check: {self.last_check_time}")  # Changed to info
+                        logger.info(f"Checking token {token.get('name')} - Created: {created_at}, Last check: {self.last_check_time}")
                         
-                        if created_at > self.last_check_time and contract_address not in self.seen_tokens:
+                        # Si le token n'a pas déjà été vu et a été créé après le dernier check
+                        if contract_address not in self.seen_tokens:
                             logger.info(f"Found new token: {token.get('name')} ({contract_address})")
                             new_tokens_found = True
                             await self._send_clanker_notification(token, self.channel)
@@ -759,7 +760,7 @@ class ClankerMonitor(commands.Cog):
 
                     # Mettre à jour le timestamp du dernier check
                     self.last_check_time = current_time
-                    logger.info(f"Updated last_check_time to {current_time}")  # Changed to info
+                    logger.info(f"Updated last_check_time to {current_time}")
 
                 except httpx.ConnectError as e:
                     logger.error(f"Connection error to Clanker API: {e}")
