@@ -113,17 +113,6 @@ class TokenMonitor(commands.Cog):
         await ctx.send(status_message)
 
     @commands.command()
-        status_message += f"Base: {base_status}\n"
-        
-        # Ajouter le statut de Clanker
-        clanker_monitor = self.bot.get_cog('ClankerMonitor')
-        if clanker_monitor:
-            clanker_status = "✅ Activé" if clanker_monitor.is_active else "❌ Désactivé"
-            status_message += f"Clanker: {clanker_status}"
-        
-        await ctx.send(status_message)
-
-    @commands.command()
     async def test(self, ctx):
         """Send a test notification"""
         try:
