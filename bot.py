@@ -663,6 +663,9 @@ class ClankerMonitor(commands.Cog):
 
                     tokens = data["data"]
                     for token in tokens:
+                        # LOG DEBUG pour chaque token reçu
+                        social_context = token.get('social_context', {})
+                        logger.info(f"[DEBUG CLANKER] contract_address={token.get('contract_address')}, cast_hash={token.get('cast_hash')}, username={social_context.get('username')}, platform={social_context.get('platform')}, interface={social_context.get('interface')}, token={token}")
                         contract_address = token.get('contract_address')
                         if contract_address and contract_address not in self.seen_tokens:
                             await self._send_clanker_notification(token, self.channel)
