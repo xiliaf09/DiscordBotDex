@@ -551,6 +551,20 @@ class ClankerMonitor(commands.Cog):
             ):
                 return  # On ne notifie pas
 
+            cast_hash = token_data.get('cast_hash')
+            tweet_link = None
+            # Si Farcaster, construire le lien complet
+            if cast_hash:
+                if platform.lower() == "farcaster" and username:
+                    cast_url = f"https://warpcast.com/{username}/{cast_hash}"
+                    tweet_link = cast_url
+                else:
+                    tweet_link = cast_hash
+
+            # Filtrer pour ne garder que les alertes avec un lien Twitter
+            if not (tweet_link and isinstance(tweet_link, str) and tweet_link.startswith("https://twitter.com/")):
+                return  # On ne notifie pas si pas de lien Twitter
+
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
                 description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
@@ -585,23 +599,12 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add deployment tweet/cast link if available
-            cast_hash = token_data.get('cast_hash')
-            if cast_hash:
-                # Si Farcaster, construire le lien complet
-                if platform.lower() == "farcaster" and username:
-                    cast_url = f"https://warpcast.com/{username}/{cast_hash}"
-                    embed.add_field(
-                        name="Tweet/Cast de Déploiement",
-                        value=cast_url,
-                        inline=False
-                    )
-                else:
-                    embed.add_field(
-                        name="Tweet/Cast de Déploiement",
-                        value=cast_hash,
-                        inline=False
-                    )
+            # Add deployment tweet/cast link (Twitter only)
+            embed.add_field(
+                name="Tweet/Cast de Déploiement",
+                value=tweet_link,
+                inline=False
+            )
 
             # Add token image if available
             if token_data.get('img_url'):
