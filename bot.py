@@ -538,6 +538,19 @@ class ClankerMonitor(commands.Cog):
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
+            # Filtrage selon la méthode de déploiement
+            social_context = token_data.get('social_context', {})
+            platform = social_context.get('platform', 'Unknown')
+            interface = social_context.get('interface', 'Unknown')
+            username = social_context.get('username')
+
+            # On ne garde que farcaster (clanker) OU Unknown (Bankr)
+            if not (
+                (platform.lower() == "farcaster") or
+                (platform == "Unknown" and interface == "Bankr")
+            ):
+                return  # On ne notifie pas
+
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
                 description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
@@ -573,26 +586,33 @@ class ClankerMonitor(commands.Cog):
                 )
 
             # Add deployment tweet/cast link if available
-            if token_data.get('cast_hash'):
-                embed.add_field(
-                    name="Tweet/Cast de Déploiement",
-                    value=token_data['cast_hash'],
-                    inline=False
-                )
+            cast_hash = token_data.get('cast_hash')
+            if cast_hash:
+                # Si Farcaster, construire le lien complet
+                if platform.lower() == "farcaster" and username:
+                    cast_url = f"https://warpcast.com/{username}/{cast_hash}"
+                    embed.add_field(
+                        name="Tweet/Cast de Déploiement",
+                        value=cast_url,
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="Tweet/Cast de Déploiement",
+                        value=cast_hash,
+                        inline=False
+                    )
 
             # Add token image if available
             if token_data.get('img_url'):
                 embed.set_thumbnail(url=token_data['img_url'])
 
             # Add social context if available
-            if social_context := token_data.get('social_context', {}):
-                platform = social_context.get('platform', 'Unknown')
-                interface = social_context.get('interface', 'Unknown')
-                embed.add_field(
-                    name="Déployé via",
-                    value=f"{platform} ({interface})",
-                    inline=True
-                )
+            embed.add_field(
+                name="Déployé via",
+                value=f"{platform} ({interface})",
+                inline=True
+            )
 
             # Add market cap if available
             if market_cap := token_data.get('starting_market_cap'):
