@@ -553,17 +553,19 @@ class ClankerMonitor(commands.Cog):
 
             cast_hash = token_data.get('cast_hash')
             tweet_link = None
-            # Si Farcaster, construire le lien complet
-            if cast_hash:
-                if platform.lower() == "farcaster" and username:
-                    cast_url = f"https://warpcast.com/{username}/{cast_hash}"
-                    tweet_link = cast_url
-                else:
-                    tweet_link = cast_hash
+            # Correction : pour Farcaster, construire le lien Warpcast si username et cast_hash sont présents
+            if platform.lower() == "farcaster" and username and cast_hash:
+                tweet_link = f"https://warpcast.com/{username}/{cast_hash}"
+            elif cast_hash:
+                tweet_link = cast_hash
 
-            # Filtrer pour ne garder que les alertes avec un lien Twitter
-            if not (tweet_link and isinstance(tweet_link, str) and tweet_link.startswith("https://twitter.com/")):
-                return  # On ne notifie pas si pas de lien Twitter
+            # Filtrer pour ne garder que les alertes avec un lien Twitter (Bankr) ou un lien Warpcast (Farcaster)
+            if platform.lower() == "farcaster":
+                if not (tweet_link and tweet_link.startswith("https://warpcast.com/")):
+                    return  # On ne notifie pas si pas de lien Warpcast pour Farcaster
+            else:
+                if not (tweet_link and tweet_link.startswith("https://twitter.com/")):
+                    return  # On ne notifie pas si pas de lien Twitter pour Bankr
 
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
@@ -599,7 +601,7 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add deployment tweet/cast link (Twitter only)
+            # Add deployment tweet/cast link (Warpcast ou Twitter)
             embed.add_field(
                 name="Tweet/Cast de Déploiement",
                 value=tweet_link,
