@@ -553,9 +553,13 @@ class ClankerMonitor(commands.Cog):
 
             cast_hash = token_data.get('cast_hash')
             tweet_link = None
-            # Correction : pour Farcaster, construire le lien Warpcast si username et cast_hash sont présents
-            if platform.lower() == "farcaster" and username and cast_hash:
-                tweet_link = f"https://warpcast.com/{username}/{cast_hash}"
+            # Pour Farcaster, générer le lien Warpcast si username et cast_hash sont présents
+            if platform.lower() == "farcaster":
+                if username and cast_hash:
+                    tweet_link = f"https://warpcast.com/{username}/{cast_hash}"
+                else:
+                    logger.warning(f"[DEBUG FARCASTER] Impossible de générer le lien Warpcast: username={username}, cast_hash={cast_hash}, token_data={token_data}")
+                    return  # On ne notifie pas si info manquante
             elif cast_hash:
                 tweet_link = cast_hash
 
