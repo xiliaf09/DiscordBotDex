@@ -552,21 +552,25 @@ class ClankerMonitor(commands.Cog):
                 return  # On ne notifie pas
 
             cast_hash = token_data.get('cast_hash')
+            contract_address = token_data.get('contract_address')
             tweet_link = None
-            # Pour Farcaster, générer le lien Warpcast si username et cast_hash sont présents
+            clanker_link = f"https://www.clanker.world/clanker/{contract_address}" if contract_address else None
+
+            # Pour Farcaster, générer le lien Warpcast si username et cast_hash sont présents, sinon afficher le cast_hash brut
             if platform.lower() == "farcaster":
                 if username and cast_hash:
                     tweet_link = f"https://warpcast.com/{username}/{cast_hash}"
+                elif cast_hash:
+                    tweet_link = cast_hash
                 else:
-                    logger.warning(f"[DEBUG FARCASTER] Impossible de générer le lien Warpcast: username={username}, cast_hash={cast_hash}, token_data={token_data}")
-                    return  # On ne notifie pas si info manquante
+                    tweet_link = "(Aucun cast_hash disponible)"
             elif cast_hash:
                 tweet_link = cast_hash
 
-            # Filtrer pour ne garder que les alertes avec un lien Twitter (Bankr) ou un lien Warpcast (Farcaster)
+            # Filtrer pour ne garder que les alertes avec un lien Twitter (Bankr) ou un cast_hash (Farcaster)
             if platform.lower() == "farcaster":
-                if not (tweet_link and tweet_link.startswith("https://warpcast.com/")):
-                    return  # On ne notifie pas si pas de lien Warpcast pour Farcaster
+                if not tweet_link:
+                    return  # On ne notifie pas si pas de cast_hash pour Farcaster
             else:
                 if not (tweet_link and tweet_link.startswith("https://twitter.com/")):
                     return  # On ne notifie pas si pas de lien Twitter pour Bankr
@@ -593,7 +597,7 @@ class ClankerMonitor(commands.Cog):
 
             embed.add_field(
                 name="Contract",
-                value=f"`{token_data.get('contract_address', 'Unknown')}`",
+                value=f"`{contract_address or 'Unknown'}`",
                 inline=False
             )
 
@@ -605,12 +609,20 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add deployment tweet/cast link (Warpcast ou Twitter)
+            # Add deployment tweet/cast link (Warpcast, Twitter ou cast_hash brut)
             embed.add_field(
                 name="Tweet/Cast de Déploiement",
                 value=tweet_link,
                 inline=False
             )
+
+            # Ajoute le lien clanker.world si disponible
+            if clanker_link:
+                embed.add_field(
+                    name="Lien Clanker",
+                    value=f"[Voir sur Clanker.world]({clanker_link})",
+                    inline=False
+                )
 
             # Add token image if available
             if token_data.get('img_url'):
