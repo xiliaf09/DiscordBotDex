@@ -822,6 +822,27 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
         await ctx.send(embed=embed)
 
+    @commands.command()
+    async def help(self, ctx):
+        """Affiche la liste des commandes disponibles et leur explication."""
+        help_text = (
+            "**Commandes disponibles :**\n"
+            "\n"
+            "`!help` — Affiche cette aide.\n"
+            "`!test` — Vérifie que le bot fonctionne.\n"
+            "`!status` — Statut du monitoring par blockchain.\n"
+            "`!baseon` / `!baseoff` — Active/désactive le monitoring Base.\n"
+            "`!solanaon` / `!solanaoff` — Active/désactive le monitoring Solana.\n"
+            "`!lasttoken` — Affiche le dernier token détecté (Base/Solana).\n"
+            "`!lasttrump` — Affiche le dernier post de Trump sur Truth Social.\n"
+            "`!clankeron` / `!clankeroff` — Active/désactive le monitoring Clanker.\n"
+            "`!lastclanker` — Affiche le dernier token déployé sur Clanker.\n"
+            "`!volume <contract>` — Affiche le volume du token sur 24h, 6h, 1h, 5min.\n"
+            "`!setvolume <usd>` — Définit le seuil global d'alerte volume (5min).\n"
+            "`!testvolumealert` — Simule une alerte de volume Clanker.\n"
+        )
+        await ctx.send(help_text)
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
