@@ -539,12 +539,11 @@ class ClankerMonitor(commands.Cog):
                 await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
 
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
-        """Send a notification for a new Clanker token."""
         try:
             # Filtrage selon la méthode de déploiement
             social_context = token_data.get('social_context', {})
-            platform = social_context.get('platform', 'Unknown')
-            interface = social_context.get('interface', 'Unknown')
+            platform = social_context.get('platform') or 'Unknown'
+            interface = social_context.get('interface') or 'Unknown'
             username = social_context.get('username')
 
             # On ne garde que farcaster (clanker) OU Unknown (Bankr)
