@@ -792,6 +792,25 @@ class ClankerMonitor(commands.Cog):
             logger.error(f"Erreur lors de la récupération du volume Dexscreener pour {contract}: {e}")
             await ctx.send("❌ Erreur lors de la récupération du volume Dexscreener.")
 
+    @commands.command()
+    async def testvolumealert(self, ctx):
+        """Simule une alerte de volume Clanker dépassant 5000 USD sur 5 minutes."""
+        contract_address = "0xFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE"
+        name = "TokenTest"
+        symbol = "TST"
+        volume_5m = 12345.67
+        dexscreener_url = f"https://dexscreener.com/base/{contract_address}"
+        embed = discord.Embed(
+            title="🚨 Volume Clanker élevé!",
+            description=f"Le token {name} ({symbol}) a dépassé 5000$ de volume sur 5 minutes!",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
+        embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
+        embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
+        await ctx.send(embed=embed)
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
