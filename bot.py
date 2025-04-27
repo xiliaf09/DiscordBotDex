@@ -602,7 +602,7 @@ class ClankerMonitor(commands.Cog):
             embed = discord.Embed(
                 title="🆕 Nouveau Token Clanker",
                 description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
-                color=discord.Color.blue(),
+                color=discord.Color(0x800080),
                 timestamp=datetime.now(timezone.utc)
             )
 
