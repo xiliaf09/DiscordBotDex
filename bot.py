@@ -460,6 +460,7 @@ class ClankerMonitor(commands.Cog):
         self.channel = None
         self.is_active = True
         self.tracked_clanker_tokens = {}  # contract_address: {'first_seen': timestamp, 'alerted': False}
+        self.default_volume_threshold = 5000
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -658,6 +659,15 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
 
+    @commands.command()
+    async def setvolume(self, ctx, volume_usd: float):
+        """Définit le seuil d'alerte volume (en USD) pour tous les tokens Clanker."""
+        if volume_usd <= 0:
+            await ctx.send("❌ Le seuil doit être strictement positif.")
+            return
+        self.default_volume_threshold = volume_usd
+        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 5 minutes pour tous les tokens.")
+
     @tasks.loop(seconds=60)
     async def monitor_clanker_volumes(self):
         """Surveille le volume sur 5 minutes des tokens Clanker détectés."""
@@ -681,11 +691,12 @@ class ClankerMonitor(commands.Cog):
                     volume_5m = float(pair.get('volume', {}).get('m5', 0))
                     symbol = pair.get('baseToken', {}).get('symbol', contract_address)
                     name = pair.get('baseToken', {}).get('name', contract_address)
-                    if volume_5m >= 5000:
+                    threshold = self.default_volume_threshold
+                    if volume_5m >= threshold:
                         # Envoie une alerte Discord
                         embed = discord.Embed(
                             title="🚨 Volume Clanker élevé!",
-                            description=f"Le token {name} ({symbol}) a dépassé 5000$ de volume sur 5 minutes!",
+                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 5 minutes!",
                             color=discord.Color.red(),
                             timestamp=datetime.now(timezone.utc)
                         )
