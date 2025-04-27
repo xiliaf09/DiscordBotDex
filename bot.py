@@ -4,6 +4,7 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Set
+import time
 
 import discord
 from discord.ext import tasks, commands
@@ -458,6 +459,7 @@ class ClankerMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.is_active = True
+        self.tracked_clanker_tokens = {}  # contract_address: {'first_seen': timestamp, 'alerted': False}
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -646,60 +648,66 @@ class ClankerMonitor(commands.Cog):
             await channel.send(embed=embed)
             logger.info(f"Clanker notification sent for token: {token_data.get('name')}")
 
+            if contract_address:
+                # Ajoute le token à la liste de surveillance du volume
+                self.tracked_clanker_tokens[contract_address.lower()] = {
+                    'first_seen': time.time(),
+                    'alerted': False
+                }
+
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
 
-    @tasks.loop(seconds=POLL_INTERVAL)
-    async def monitor_clanker(self):
-        """Monitor for new Clanker token deployments."""
-        if not self.is_active:
+    @tasks.loop(seconds=60)
+    async def monitor_clanker_volumes(self):
+        """Surveille le volume sur 5 minutes des tokens Clanker détectés."""
+        if not self.is_active or not self.channel:
             return
+        to_remove = []
+        for contract_address, info in list(self.tracked_clanker_tokens.items()):
+            if info.get('alerted'):
+                continue  # Déjà alerté
+            # Appel Dexscreener
+            url = f"https://api.dexscreener.com/latest/dex/tokens/{contract_address}"
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(url)
+                    data = resp.json()
+                    pairs = data.get('pairs', [])
+                    if not pairs:
+                        continue
+                    # On prend le premier pair trouvé
+                    pair = pairs[0]
+                    volume_5m = float(pair.get('volume', {}).get('m5', 0))
+                    symbol = pair.get('baseToken', {}).get('symbol', contract_address)
+                    name = pair.get('baseToken', {}).get('name', contract_address)
+                    if volume_5m >= 5000:
+                        # Envoie une alerte Discord
+                        embed = discord.Embed(
+                            title="🚨 Volume Clanker élevé!",
+                            description=f"Le token {name} ({symbol}) a dépassé 5000$ de volume sur 5 minutes!",
+                            color=discord.Color.red(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
+                        embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
+                        embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
+                        await self.channel.send(embed=embed)
+                        self.tracked_clanker_tokens[contract_address]['alerted'] = True
+            except Exception as e:
+                logger.error(f"Erreur lors de la vérification du volume Dexscreener pour {contract_address}: {e}")
+        # Nettoyage optionnel: on peut retirer les tokens alertés depuis longtemps
+        for contract_address, info in list(self.tracked_clanker_tokens.items()):
+            if info.get('alerted') and (time.time() - info['first_seen'] > 3600):
+                to_remove.append(contract_address)
+        for contract_address in to_remove:
+            del self.tracked_clanker_tokens[contract_address]
 
-        try:
-            if not self.channel:
-                self.channel = self.bot.get_channel(CHANNEL_ID)
-                if not self.channel:
-                    logger.error("Could not find channel for Clanker notifications")
-                    return
-
-            # Fetch latest Clanker deployments with timeout and SSL verification
-            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
-                try:
-                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
-                    response.raise_for_status()
-                    data = response.json()
-
-                    if not isinstance(data, dict) or "data" not in data:
-                        logger.error("Invalid response format from Clanker API")
-                        return
-
-                    tokens = data["data"]
-                    for token in tokens:
-                        # LOG DEBUG pour chaque token reçu
-                        social_context = token.get('social_context', {})
-                        logger.info(f"[DEBUG CLANKER] contract_address={token.get('contract_address')}, cast_hash={token.get('cast_hash')}, username={social_context.get('username')}, platform={social_context.get('platform')}, interface={social_context.get('interface')}, token={token}")
-                        contract_address = token.get('contract_address')
-                        if contract_address and contract_address not in self.seen_tokens:
-                            await self._send_clanker_notification(token, self.channel)
-                            self.seen_tokens.add(contract_address)
-                            self._save_seen_tokens()
-
-                except httpx.ConnectError as e:
-                    logger.error(f"Connection error to Clanker API: {e}")
-                except httpx.TimeoutException as e:
-                    logger.error(f"Timeout while connecting to Clanker API: {e}")
-                except httpx.HTTPStatusError as e:
-                    logger.error(f"HTTP error from Clanker API: {e}")
-                except json.JSONDecodeError as e:
-                    logger.error(f"Invalid JSON response from Clanker API: {e}")
-
-        except Exception as e:
-            logger.error(f"Error monitoring Clanker: {e}")
-
-    @monitor_clanker.before_loop
-    async def before_monitor_clanker(self):
-        """Wait for bot to be ready before starting the Clanker monitoring loop."""
+    @monitor_clanker_volumes.before_loop
+    async def before_monitor_clanker_volumes(self):
         await self.bot.wait_until_ready()
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
 
 class Bot(commands.Bot):
     def __init__(self):
@@ -759,6 +767,7 @@ class Bot(commands.Bot):
         token_monitor.monitor_tokens.start()
         token_monitor.check_trump_posts.start()
         clanker_monitor.monitor_clanker.start()
+        clanker_monitor.monitor_clanker_volumes.start()
 
     async def on_ready(self):
         """Called when the bot is ready."""
