@@ -453,6 +453,27 @@ class TokenMonitor(commands.Cog):
     async def before_check_trump_posts(self):
         await self.wait_until_ready()
 
+    @commands.command()
+    async def help(self, ctx):
+        """Affiche la liste des commandes disponibles et leur explication dans un embed."""
+        embed = discord.Embed(
+            title="Aide - Commandes disponibles",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="!help", value="Affiche cette aide.", inline=False)
+        embed.add_field(name="!test", value="Vérifie que le bot fonctionne.", inline=False)
+        embed.add_field(name="!status", value="Statut du monitoring par blockchain.", inline=False)
+        embed.add_field(name="!baseon / !baseoff", value="Active/désactive le monitoring Base.", inline=False)
+        embed.add_field(name="!solanaon / !solanaoff", value="Active/désactive le monitoring Solana.", inline=False)
+        embed.add_field(name="!lasttoken", value="Affiche le dernier token détecté (Base/Solana).", inline=False)
+        embed.add_field(name="!lasttrump", value="Affiche le dernier post de Trump sur Truth Social.", inline=False)
+        embed.add_field(name="!clankeron / !clankeroff", value="Active/désactive le monitoring Clanker.", inline=False)
+        embed.add_field(name="!lastclanker", value="Affiche le dernier token déployé sur Clanker.", inline=False)
+        embed.add_field(name="!volume <contract>", value="Affiche le volume du token sur 24h, 6h, 1h, 5min.", inline=False)
+        embed.add_field(name="!setvolume <usd>", value="Définit le seuil global d'alerte volume (5min).", inline=False)
+        embed.add_field(name="!testvolumealert", value="Simule une alerte de volume Clanker.", inline=False)
+        await ctx.send(embed=embed)
+
 class ClankerMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -539,11 +560,12 @@ class ClankerMonitor(commands.Cog):
                 await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
 
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
+        """Send a notification for a new Clanker token."""
         try:
             # Filtrage selon la méthode de déploiement
             social_context = token_data.get('social_context', {})
-            platform = social_context.get('platform') or 'Unknown'
-            interface = social_context.get('interface') or 'Unknown'
+            platform = social_context.get('platform', 'Unknown')
+            interface = social_context.get('interface', 'Unknown')
             username = social_context.get('username')
 
             # On ne garde que farcaster (clanker) OU Unknown (Bankr)
@@ -820,27 +842,6 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
         await ctx.send(embed=embed)
-
-    @commands.command()
-    async def help(self, ctx):
-        """Affiche la liste des commandes disponibles et leur explication."""
-        help_text = (
-            "**Commandes disponibles :**\n"
-            "\n"
-            "`!help` — Affiche cette aide.\n"
-            "`!test` — Vérifie que le bot fonctionne.\n"
-            "`!status` — Statut du monitoring par blockchain.\n"
-            "`!baseon` / `!baseoff` — Active/désactive le monitoring Base.\n"
-            "`!solanaon` / `!solanaoff` — Active/désactive le monitoring Solana.\n"
-            "`!lasttoken` — Affiche le dernier token détecté (Base/Solana).\n"
-            "`!lasttrump` — Affiche le dernier post de Trump sur Truth Social.\n"
-            "`!clankeron` / `!clankeroff` — Active/désactive le monitoring Clanker.\n"
-            "`!lastclanker` — Affiche le dernier token déployé sur Clanker.\n"
-            "`!volume <contract>` — Affiche le volume du token sur 24h, 6h, 1h, 5min.\n"
-            "`!setvolume <usd>` — Définit le seuil global d'alerte volume (5min).\n"
-            "`!testvolumealert` — Simule une alerte de volume Clanker.\n"
-        )
-        await ctx.send(help_text)
 
 class Bot(commands.Bot):
     def __init__(self):
