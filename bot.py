@@ -709,6 +709,89 @@ class ClankerMonitor(commands.Cog):
         if not self.channel:
             self.channel = self.bot.get_channel(CHANNEL_ID)
 
+    @tasks.loop(seconds=POLL_INTERVAL)
+    async def monitor_clanker(self):
+        """Monitor for new Clanker token deployments."""
+        if not self.is_active:
+            return
+
+        try:
+            if not self.channel:
+                self.channel = self.bot.get_channel(CHANNEL_ID)
+                if not self.channel:
+                    logger.error("Could not find channel for Clanker notifications")
+                    return
+
+            # Fetch latest Clanker deployments with timeout and SSL verification
+            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
+                try:
+                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if not isinstance(data, dict) or "data" not in data:
+                        logger.error("Invalid response format from Clanker API")
+                        return
+
+                    tokens = data["data"]
+                    for token in tokens:
+                        # LOG DEBUG pour chaque token reçu
+                        social_context = token.get('social_context', {})
+                        logger.info(f"[DEBUG CLANKER] contract_address={token.get('contract_address')}, cast_hash={token.get('cast_hash')}, username={social_context.get('username')}, platform={social_context.get('platform')}, interface={social_context.get('interface')}, token={token}")
+                        contract_address = token.get('contract_address')
+                        if contract_address and contract_address not in self.seen_tokens:
+                            await self._send_clanker_notification(token, self.channel)
+                            self.seen_tokens.add(contract_address)
+                            self._save_seen_tokens()
+
+                except httpx.ConnectError as e:
+                    logger.error(f"Connection error to Clanker API: {e}")
+                except httpx.TimeoutException as e:
+                    logger.error(f"Timeout while connecting to Clanker API: {e}")
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"HTTP error from Clanker API: {e}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON response from Clanker API: {e}")
+
+        except Exception as e:
+            logger.error(f"Error monitoring Clanker: {e}")
+
+    @monitor_clanker.before_loop
+    async def before_monitor_clanker(self):
+        """Wait for bot to be ready before starting the Clanker monitoring loop."""
+        await self.bot.wait_until_ready()
+
+    @commands.command()
+    async def volume(self, ctx, contract: str):
+        """Affiche le volume du token sur 24h, 6h, 1h et 5min via Dexscreener."""
+        url = f"https://api.dexscreener.com/latest/dex/tokens/{contract}"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                data = resp.json()
+                pairs = data.get('pairs', [])
+                if not pairs:
+                    await ctx.send("❌ Aucun pair trouvé pour ce contrat sur Dexscreener.")
+                    return
+                pair = pairs[0]
+                volume = pair.get('volume', {})
+                symbol = pair.get('baseToken', {}).get('symbol', contract)
+                name = pair.get('baseToken', {}).get('name', contract)
+                embed = discord.Embed(
+                    title=f"Volumes pour {name} ({symbol})",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(name="Contract", value=f"`{contract}`", inline=False)
+                embed.add_field(name="Volume 24h", value=f"${float(volume.get('h24', 0)):,}", inline=True)
+                embed.add_field(name="Volume 6h", value=f"${float(volume.get('h6', 0)):,}", inline=True)
+                embed.add_field(name="Volume 1h", value=f"${float(volume.get('h1', 0)):,}", inline=True)
+                embed.add_field(name="Volume 5min", value=f"${float(volume.get('m5', 0)):,}", inline=True)
+                embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
+                await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du volume Dexscreener pour {contract}: {e}")
+            await ctx.send("❌ Erreur lors de la récupération du volume Dexscreener.")
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
