@@ -29,12 +29,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
-BASE_RPC_URL = "https://mainnet.base.org"
+BASESCAN_API_KEY = os.getenv('BASESCAN_API_KEY')
 
 # Constants
 DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 CLANKER_API_URL = "https://www.clanker.world/api"
+BASESCAN_API_URL = "https://api.basescan.org/api"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -45,7 +46,7 @@ SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 TRACKED_WALLETS_FILE = "tracked_wallets.json"
 
 # Initialize Web3
-w3 = Web3(Web3.HTTPProvider(BASE_RPC_URL))
+w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -58,228 +59,12 @@ class TokenMonitor(commands.Cog):
         }
         self.seen_trump_posts = set()
         self.last_check_time = None
-        self.tracked_wallets = self._load_tracked_wallets()
-        self.wallet_positions = {}  # {wallet_address: {token_address: {amount, entry_price}}}
         
         # Liste des tickers crypto à surveiller
         self.crypto_tickers = {
             'BTC', 'ETH', 'XRP', 'SOL', 'SUI', 'DOGE', 'SHIB', 'BNB', 'ADA',
             'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI', 'XLM', 'ATOM'
         }
-
-    def _load_tracked_wallets(self) -> Dict:
-        """Load tracked wallets from file."""
-        try:
-            if os.path.exists(TRACKED_WALLETS_FILE):
-                with open(TRACKED_WALLETS_FILE, 'r') as f:
-                    return json.load(f)
-            return {}
-        except Exception as e:
-            logger.error(f"Error loading tracked wallets: {e}")
-            return {}
-
-    def _save_tracked_wallets(self):
-        """Save tracked wallets to file."""
-        try:
-            with open(TRACKED_WALLETS_FILE, 'w') as f:
-                json.dump(self.tracked_wallets, f)
-        except Exception as e:
-            logger.error(f"Error saving tracked wallets: {e}")
-
-    @commands.command()
-    async def track(self, ctx, wallet_address: str):
-        """Start tracking a wallet address for Base transactions"""
-        try:
-            # Validate wallet address
-            if not w3.is_address(wallet_address):
-                await ctx.send("❌ Adresse de wallet invalide.")
-                return
-
-            # Normalize address
-            wallet_address = w3.to_checksum_address(wallet_address)
-
-            # Add to tracked wallets
-            if wallet_address not in self.tracked_wallets:
-                self.tracked_wallets[wallet_address] = {
-                    "added_by": ctx.author.id,
-                    "added_at": datetime.now(timezone.utc).isoformat(),
-                    "last_block": w3.eth.block_number
-                }
-                self._save_tracked_wallets()
-                await ctx.send(f"✅ Tracking activé pour l'adresse: `{wallet_address}`")
-            else:
-                await ctx.send("⚠️ Cette adresse est déjà trackée.")
-
-        except Exception as e:
-            logger.error(f"Error in track command: {e}")
-            await ctx.send("❌ Erreur lors de l'activation du tracking.")
-
-    @commands.command()
-    async def stoptrack(self, ctx, wallet_address: str):
-        """Stop tracking a wallet address"""
-        try:
-            # Validate and normalize address
-            if not w3.is_address(wallet_address):
-                await ctx.send("❌ Adresse de wallet invalide.")
-                return
-
-            wallet_address = w3.to_checksum_address(wallet_address)
-
-            # Remove from tracked wallets
-            if wallet_address in self.tracked_wallets:
-                del self.tracked_wallets[wallet_address]
-                if wallet_address in self.wallet_positions:
-                    del self.wallet_positions[wallet_address]
-                self._save_tracked_wallets()
-                await ctx.send(f"✅ Tracking désactivé pour l'adresse: `{wallet_address}`")
-            else:
-                await ctx.send("⚠️ Cette adresse n'était pas trackée.")
-
-        except Exception as e:
-            logger.error(f"Error in stoptrack command: {e}")
-            await ctx.send("❌ Erreur lors de la désactivation du tracking.")
-
-    async def _get_token_info(self, token_address: str) -> Dict:
-        """Get token information from Dexscreener"""
-        try:
-            url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url)
-                data = response.json()
-                if 'pairs' in data and data['pairs']:
-                    pair = data['pairs'][0]
-                    return {
-                        'name': pair.get('baseToken', {}).get('name', 'Unknown'),
-                        'symbol': pair.get('baseToken', {}).get('symbol', 'Unknown'),
-                        'price': float(pair.get('priceUsd', 0)),
-                        'price_eth': float(pair.get('priceNative', 0))
-                    }
-        except Exception as e:
-            logger.error(f"Error getting token info: {e}")
-        return None
-
-    async def _process_transaction(self, tx_hash: str, wallet_address: str):
-        """Process a transaction and send notification if relevant"""
-        try:
-            tx = w3.eth.get_transaction(tx_hash)
-            tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
-
-            # Check if it's a swap transaction
-            if tx_receipt['status'] == 1 and tx['to'] and tx['to'].lower() in [
-                '0x327df1e6de05895d2ab08513aadd9313fe505d86',  # BaseSwap
-                '0x2626664c2603336e57b271c5c0b26f421741e481',  # Uniswap V3
-                '0x198ef79b1a575aed60fb2224e27f65f5f7c3e77b'   # Aerodrome
-            ]:
-                # Get token information
-                token_info = await self._get_token_info(tx_receipt['logs'][0]['address'])
-                if not token_info:
-                    return
-
-                # Calculate transaction value in ETH
-                value_eth = w3.from_wei(tx['value'], 'ether')
-                value_usd = value_eth * token_info['price_eth']
-
-                # Determine if it's a buy or sell
-                is_buy = tx['from'].lower() == wallet_address.lower()
-                action = "🟢 Achat" if is_buy else "🔴 Vente"
-
-                # Calculate PNL if we have position data
-                pnl_info = ""
-                if wallet_address in self.wallet_positions:
-                    position = self.wallet_positions[wallet_address].get(token_info['symbol'])
-                    if position:
-                        entry_price = position['entry_price']
-                        current_price = token_info['price']
-                        pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                        pnl_info = f"\nPNL: {pnl_percent:.2f}%"
-
-                # Create and send embed
-                embed = discord.Embed(
-                    title=f"{action} détecté!",
-                    description=f"Transaction pour l'adresse trackée: `{wallet_address}`",
-                    color=discord.Color.green() if is_buy else discord.Color.red(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-
-                embed.add_field(
-                    name="Token",
-                    value=f"{token_info['name']} ({token_info['symbol']})",
-                    inline=True
-                )
-
-                embed.add_field(
-                    name="Montant",
-                    value=f"{value_eth:.4f} ETH (${value_usd:.2f})",
-                    inline=True
-                )
-
-                if pnl_info:
-                    embed.add_field(
-                        name="Performance",
-                        value=pnl_info,
-                        inline=True
-                    )
-
-                embed.add_field(
-                    name="Transaction",
-                    value=f"[Voir sur Basescan](https://basescan.org/tx/{tx_hash.hex()})",
-                    inline=False
-                )
-
-                await self.channel.send(embed=embed)
-
-                # Update position tracking
-                if is_buy:
-                    if wallet_address not in self.wallet_positions:
-                        self.wallet_positions[wallet_address] = {}
-                    self.wallet_positions[wallet_address][token_info['symbol']] = {
-                        'amount': value_eth,
-                        'entry_price': token_info['price']
-                    }
-                else:
-                    if wallet_address in self.wallet_positions and token_info['symbol'] in self.wallet_positions[wallet_address]:
-                        del self.wallet_positions[wallet_address][token_info['symbol']]
-
-        except Exception as e:
-            logger.error(f"Error processing transaction: {e}")
-
-    @tasks.loop(seconds=10)
-    async def monitor_wallet_transactions(self):
-        """Monitor transactions for tracked wallets"""
-        if not self.channel:
-            return
-
-        try:
-            current_block = w3.eth.block_number
-            
-            for wallet_address, info in self.tracked_wallets.items():
-                last_block = info['last_block']
-                
-                # Get new blocks
-                for block_number in range(last_block + 1, current_block + 1):
-                    block = w3.eth.get_block(block_number, full_transactions=True)
-                    
-                    # Check transactions in block
-                    for tx in block.transactions:
-                        if tx['from'].lower() == wallet_address.lower() or tx['to'] and tx['to'].lower() == wallet_address.lower():
-                            await self._process_transaction(tx.hex(), wallet_address)
-                
-                # Update last block
-                self.tracked_wallets[wallet_address]['last_block'] = current_block
-            
-            self._save_tracked_wallets()
-
-        except Exception as e:
-            logger.error(f"Error monitoring wallet transactions: {e}")
-
-    @monitor_wallet_transactions.before_loop
-    async def before_monitor_wallet_transactions(self):
-        """Wait until the bot is ready before starting the monitor."""
-        await self.bot.wait_until_ready()
-        self.channel = self.bot.get_channel(CHANNEL_ID)
-        if not self.channel:
-            logger.error(f"Could not find channel with ID {CHANNEL_ID}")
-            return
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen token addresses from file."""
@@ -1065,6 +850,270 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
         await ctx.send(embed=embed)
 
+class WalletTracker(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.channel = None
+        self.tracked_wallets = self._load_tracked_wallets()
+        self.wallet_positions = {}  # wallet_address: {token_address: {'amount': float, 'avg_price': float}}
+        self.monitor_wallets.start()
+
+    def _load_tracked_wallets(self) -> Dict:
+        """Load tracked wallets from file."""
+        try:
+            if os.path.exists(TRACKED_WALLETS_FILE):
+                with open(TRACKED_WALLETS_FILE, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading tracked wallets: {e}")
+            return {}
+
+    def _save_tracked_wallets(self):
+        """Save tracked wallets to file."""
+        try:
+            with open(TRACKED_WALLETS_FILE, 'w') as f:
+                json.dump(self.tracked_wallets, f)
+        except Exception as e:
+            logger.error(f"Error saving tracked wallets: {e}")
+
+    @commands.command()
+    async def track(self, ctx, wallet_address: str):
+        """Start tracking a wallet address."""
+        try:
+            # Validate wallet address
+            if not w3.is_address(wallet_address):
+                await ctx.send("❌ Adresse de wallet invalide.")
+                return
+
+            # Normalize address
+            wallet_address = w3.to_checksum_address(wallet_address)
+
+            # Check if already tracking
+            if wallet_address in self.tracked_wallets:
+                await ctx.send("❌ Cette adresse est déjà suivie.")
+                return
+
+            # Add to tracked wallets
+            self.tracked_wallets[wallet_address] = {
+                'added_by': ctx.author.id,
+                'added_at': datetime.now(timezone.utc).isoformat()
+            }
+            self._save_tracked_wallets()
+
+            # Initialize positions for this wallet
+            self.wallet_positions[wallet_address] = {}
+
+            await ctx.send(f"✅ Suivi activé pour l'adresse `{wallet_address}`")
+
+        except Exception as e:
+            logger.error(f"Error in track command: {e}")
+            await ctx.send("❌ Une erreur est survenue lors de l'activation du suivi.")
+
+    @commands.command()
+    async def stoptrack(self, ctx, wallet_address: str):
+        """Stop tracking a wallet address."""
+        try:
+            # Validate wallet address
+            if not w3.is_address(wallet_address):
+                await ctx.send("❌ Adresse de wallet invalide.")
+                return
+
+            # Normalize address
+            wallet_address = w3.to_checksum_address(wallet_address)
+
+            # Check if tracking
+            if wallet_address not in self.tracked_wallets:
+                await ctx.send("❌ Cette adresse n'est pas suivie.")
+                return
+
+            # Remove from tracked wallets
+            del self.tracked_wallets[wallet_address]
+            if wallet_address in self.wallet_positions:
+                del self.wallet_positions[wallet_address]
+            self._save_tracked_wallets()
+
+            await ctx.send(f"✅ Suivi désactivé pour l'adresse `{wallet_address}`")
+
+        except Exception as e:
+            logger.error(f"Error in stoptrack command: {e}")
+            await ctx.send("❌ Une erreur est survenue lors de la désactivation du suivi.")
+
+    async def _get_token_info(self, token_address: str) -> Dict:
+        """Get token information from Dexscreener."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"https://api.dexscreener.com/latest/dex/tokens/{token_address}")
+                data = response.json()
+                if 'pairs' in data and data['pairs']:
+                    pair = data['pairs'][0]
+                    return {
+                        'name': pair['baseToken']['name'],
+                        'symbol': pair['baseToken']['symbol'],
+                        'price_usd': float(pair['priceUsd']),
+                        'price_eth': float(pair['priceNative'])
+                    }
+        except Exception as e:
+            logger.error(f"Error getting token info: {e}")
+        return None
+
+    async def _get_eth_price(self) -> float:
+        """Get current ETH price in USD."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd")
+                data = response.json()
+                return float(data['ethereum']['usd'])
+        except Exception as e:
+            logger.error(f"Error getting ETH price: {e}")
+            return 0.0
+
+    @tasks.loop(seconds=30)
+    async def monitor_wallets(self):
+        """Monitor tracked wallets for transactions."""
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
+            if not self.channel:
+                return
+
+        for wallet_address in list(self.tracked_wallets.keys()):
+            try:
+                # Get latest transactions
+                params = {
+                    'module': 'account',
+                    'action': 'tokentx',
+                    'address': wallet_address,
+                    'startblock': 0,
+                    'endblock': 99999999,
+                    'sort': 'desc',
+                    'apikey': BASESCAN_API_KEY
+                }
+                
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(BASESCAN_API_URL, params=params)
+                    data = response.json()
+
+                    if data['status'] == '1' and data['result']:
+                        latest_tx = data['result'][0]
+                        
+                        # Check if we've already processed this transaction
+                        tx_hash = latest_tx['hash']
+                        if tx_hash in self.tracked_wallets[wallet_address].get('processed_txs', set()):
+                            continue
+
+                        # Get token info
+                        token_address = latest_tx['contractAddress']
+                        token_info = await self._get_token_info(token_address)
+                        if not token_info:
+                            continue
+
+                        # Calculate transaction details
+                        value = float(latest_tx['value']) / (10 ** int(latest_tx['tokenDecimal']))
+                        eth_price = await self._get_eth_price()
+                        value_usd = value * token_info['price_usd']
+                        value_eth = value * token_info['price_eth']
+
+                        # Determine transaction type
+                        is_buy = latest_tx['to'].lower() == wallet_address.lower()
+                        tx_type = "🟢 Achat" if is_buy else "🔴 Vente"
+
+                        # Update position tracking
+                        if wallet_address not in self.wallet_positions:
+                            self.wallet_positions[wallet_address] = {}
+                        
+                        if token_address not in self.wallet_positions[wallet_address]:
+                            self.wallet_positions[wallet_address][token_address] = {
+                                'amount': 0,
+                                'avg_price': 0
+                            }
+
+                        position = self.wallet_positions[wallet_address][token_address]
+                        
+                        if is_buy:
+                            # Update average price and amount for buys
+                            total_cost = position['amount'] * position['avg_price'] + value * token_info['price_usd']
+                            position['amount'] += value
+                            position['avg_price'] = total_cost / position['amount'] if position['amount'] > 0 else 0
+                        else:
+                            # Update amount for sells
+                            position['amount'] -= value
+                            if position['amount'] <= 0:
+                                position['amount'] = 0
+                                position['avg_price'] = 0
+
+                        # Calculate PNL
+                        current_value = position['amount'] * token_info['price_usd']
+                        cost_basis = position['amount'] * position['avg_price']
+                        pnl = current_value - cost_basis
+                        pnl_percentage = (pnl / cost_basis * 100) if cost_basis > 0 else 0
+
+                        # Create and send embed
+                        embed = discord.Embed(
+                            title=f"{tx_type} {token_info['symbol']}",
+                            color=discord.Color.green() if is_buy else discord.Color.red(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+
+                        embed.add_field(
+                            name="Token",
+                            value=f"{token_info['name']} ({token_info['symbol']})",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="Montant",
+                            value=f"{value:,.2f} {token_info['symbol']}",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="Valeur",
+                            value=f"${value_usd:,.2f} (Ξ {value_eth:,.4f})",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="Position Actuelle",
+                            value=f"{position['amount']:,.2f} {token_info['symbol']}",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="Prix Moyen",
+                            value=f"${position['avg_price']:,.2f}",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="PNL",
+                            value=f"${pnl:,.2f} ({pnl_percentage:,.2f}%)",
+                            inline=True
+                        )
+
+                        embed.add_field(
+                            name="Transaction",
+                            value=f"[Voir sur Basescan](https://basescan.org/tx/{tx_hash})",
+                            inline=False
+                        )
+
+                        await self.channel.send(embed=embed)
+
+                        # Mark transaction as processed
+                        if 'processed_txs' not in self.tracked_wallets[wallet_address]:
+                            self.tracked_wallets[wallet_address]['processed_txs'] = set()
+                        self.tracked_wallets[wallet_address]['processed_txs'].add(tx_hash)
+                        self._save_tracked_wallets()
+
+            except Exception as e:
+                logger.error(f"Error monitoring wallet {wallet_address}: {e}")
+
+    @monitor_wallets.before_loop
+    async def before_monitor_wallets(self):
+        """Wait until the bot is ready before starting the monitor."""
+        await self.bot.wait_until_ready()
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -1076,9 +1125,11 @@ class Bot(commands.Bot):
         # Add cogs
         token_monitor = TokenMonitor(self)
         clanker_monitor = ClankerMonitor(self)
+        wallet_tracker = WalletTracker(self)
         
         await self.add_cog(token_monitor)
         await self.add_cog(clanker_monitor)
+        await self.add_cog(wallet_tracker)
         
         # Cache initial tokens before starting monitoring
         try:
@@ -1122,9 +1173,9 @@ class Bot(commands.Bot):
         # Start monitoring tasks
         token_monitor.monitor_tokens.start()
         token_monitor.check_trump_posts.start()
-        token_monitor.monitor_wallet_transactions.start()
         clanker_monitor.monitor_clanker.start()
         clanker_monitor.monitor_clanker_volumes.start()
+        wallet_tracker.monitor_wallets.start()
 
     async def on_ready(self):
         """Called when the bot is ready."""
