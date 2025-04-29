@@ -9,6 +9,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - Commandes pour activer/désactiver le monitoring par chaîne
 - Surveillance des nouveaux tokens Clanker
 - Affichage des informations détaillées des tokens
+- Tracking des transactions de wallets sur Base
 
 ## Commandes
 
@@ -32,6 +33,10 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
 - `!lastclanker` - Affiche le dernier token déployé sur Clanker
 
+### Commandes de Tracking de Wallet
+- `!track <adresse_wallet>` - Active le suivi des transactions d'un wallet sur Base
+- `!stoptrack <adresse_wallet>` - Désactive le suivi des transactions d'un wallet
+
 ## Installation
 
 1. Clonez le repository
@@ -43,6 +48,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
    ```
    DISCORD_TOKEN=votre_token_discord
    CHANNEL_ID=id_du_canal
+   BASESCAN_API_KEY=votre_cle_api_basescan
    ```
 4. Lancez le bot :
    ```bash
@@ -54,6 +60,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 Le bot utilise les variables d'environnement suivantes :
 - `DISCORD_TOKEN` : Le token de votre bot Discord
 - `CHANNEL_ID` : L'ID du canal où les notifications seront envoyées
+- `BASESCAN_API_KEY` : Votre clé API Basescan pour accéder aux données de transactions
 
 ## Dépendances
 
@@ -62,6 +69,7 @@ Le bot utilise les variables d'environnement suivantes :
 - python-dotenv
 - httpx
 - feedparser
+- web3
 
 ## Contribution
 
@@ -79,3 +87,4 @@ Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou un
 - Les tokens vus sont stockés dans `seen_tokens.json`
 - Les logs sont écrits dans `bot.log`
 - Le bot garde en mémoire les 100 derniers posts de Trump vérifiés
+- Les wallets suivis sont stockés dans `tracked_wallets.json`

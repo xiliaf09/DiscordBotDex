@@ -1,21 +1,12 @@
-import requests
+import httpx
+import json
+import asyncio
 
-def test_api():
-    url = "https://api.dexscreener.com/token-profiles/latest/v1"
-    headers = {
-        'Accept': '*/*',
-        'User-Agent': 'Mozilla/5.0'
-    }
-    
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+async def test_clanker_api():
+    async with httpx.AsyncClient() as client:
+        response = await client.get("https://www.clanker.world/api/tokens", params={"page": 1, "sort": "desc"})
         data = response.json()
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Headers: {response.headers}")
-        print(f"Data: {data[:2]}")  # Print first 2 items only
-    except Exception as e:
-        print(f"Error: {e}")
+        print(json.dumps(data, indent=2))
 
 if __name__ == "__main__":
-    test_api() 
+    asyncio.run(test_clanker_api()) 
