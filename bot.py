@@ -1221,6 +1221,33 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
+    async def whitelist(self, ctx, fid: str):
+        """Ajouter un FID à la whitelist."""
+        if not fid.isdigit():
+            await ctx.send("❌ Le FID doit être un nombre.")
+            return
+
+        if fid in self.banned_fids:
+            await ctx.send("❌ Ce FID est banni. Veuillez d'abord le débannir avec !unbanfid.")
+            return
+
+        self.whitelisted_fids.add(fid)
+        self._save_whitelisted_fids()  # Sauvegarder immédiatement après modification
+        await ctx.send(f"✅ FID {fid} ajouté à la whitelist avec succès.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def removewhitelist(self, ctx, fid: str):
+        """Retirer un FID de la whitelist."""
+        if fid in self.whitelisted_fids:
+            self.whitelisted_fids.remove(fid)
+            self._save_whitelisted_fids()  # Sauvegarder immédiatement après modification
+            await ctx.send(f"✅ FID {fid} retiré de la whitelist avec succès.")
+        else:
+            await ctx.send("❌ Ce FID n'est pas dans la whitelist.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
     async def importfollowing(self, ctx, username: str, limit: int = 100):
         """Importe les FIDs des comptes suivis par un utilisateur Warpcast.
         
