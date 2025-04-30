@@ -516,7 +516,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
         embed.add_field(name="!removewhitelist <fid>", value="Retire un FID de la whitelist.", inline=False)
         embed.add_field(name="!checkwhitelist", value="Affiche la liste des FIDs whitelistés.", inline=False)
-        embed.add_field(name="!importfollowing <username>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
+        embed.add_field(name="!importfollowing <username> <limit>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -1234,9 +1234,18 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def importfollowing(self, ctx, username: str):
-        """Importe les FIDs des comptes suivis par un utilisateur Warpcast."""
+    async def importfollowing(self, ctx, username: str, limit: int = 100):
+        """Importe les FIDs des comptes suivis par un utilisateur Warpcast.
+        
+        Args:
+            username (str): Le nom d'utilisateur Warpcast
+            limit (int, optional): Nombre maximum de comptes à afficher. Par défaut 100.
+        """
         try:
+            if limit <= 0:
+                await ctx.send("❌ La limite doit être un nombre positif.")
+                return
+                
             status_msg = await ctx.send(f"🔍 Recherche des comptes suivis par @{username}...")
 
             # Première requête pour obtenir le FID de l'utilisateur cible
@@ -1259,35 +1268,57 @@ class ClankerMonitor(commands.Cog):
                     await status_msg.edit(content=f"❌ Impossible de trouver le FID de @{username}.")
                     return
 
-                # Deuxième requête pour obtenir la liste des comptes suivis
-                response = await client.get(
-                    f"{WARPCAST_API_URL}/following",
-                    params={"fid": target_fid}
-                )
-                response.raise_for_status()
-                data = response.json()
+                # Variables pour la pagination
+                following = []
+                cursor = None
+                total_fetched = 0
 
-                if "result" not in data:
-                    await status_msg.edit(content="❌ Erreur lors de la récupération des comptes suivis.")
-                    return
+                # Boucle de pagination pour récupérer tous les follows
+                while True:
+                    params = {"fid": target_fid, "limit": 100}  # Limite max par requête
+                    if cursor:
+                        params["cursor"] = cursor
 
-                following = data["result"].get("users", [])
-                
+                    await status_msg.edit(content=f"🔍 Récupération des comptes suivis... ({total_fetched} trouvés)")
+                    
+                    response = await client.get(
+                        f"{WARPCAST_API_URL}/following",
+                        params=params
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if "result" not in data:
+                        await status_msg.edit(content="❌ Erreur lors de la récupération des comptes suivis.")
+                        return
+
+                    batch = data["result"].get("users", [])
+                    following.extend(batch)
+                    total_fetched += len(batch)
+
+                    # Vérifier s'il y a plus de résultats
+                    cursor = data["result"].get("next", {}).get("cursor")
+                    if not cursor or total_fetched >= limit:
+                        break
+
                 if not following:
                     await status_msg.edit(content=f"❌ @{username} ne suit aucun compte.")
                     return
 
+                # Limiter au nombre demandé
+                following = following[:limit]
+                
                 # Créer un embed avec la liste des comptes trouvés
                 embed = discord.Embed(
                     title=f"👥 Comptes suivis par @{username}",
-                    description="Voici les FIDs des comptes suivis. Utilisez !whitelist <fid> pour les ajouter à la whitelist.",
+                    description=f"Voici les {len(following)} premiers FIDs des comptes suivis (sur un total de {total_fetched}). Utilisez !whitelist <fid> pour les ajouter à la whitelist.",
                     color=discord.Color.blue()
                 )
 
-                # Grouper les comptes par paquets de 20 pour respecter la limite de Discord
-                chunks = [following[i:i + 20] for i in range(0, len(following), 20)]
+                # Grouper les comptes par paquets de 15 pour respecter la limite de Discord
+                chunks = [following[i:i + 15] for i in range(0, len(following), 15)]
                 
-                for i, chunk in enumerate(chunks):
+                for i, chunk in enumerate(chunks[:15]):  # Maximum 15 champs pour garder de la place pour le résumé
                     field_text = ""
                     for user in chunk:
                         fid = user.get("fid")
@@ -1299,22 +1330,21 @@ class ClankerMonitor(commands.Cog):
                         field_text += f"{status} **FID:** {fid} - @{username} ({display_name})\n"
                     
                     embed.add_field(
-                        name=f"Liste {i+1}/{len(chunks)}",
+                        name=f"Liste {i+1}/{min(len(chunks), 15)}",
                         value=field_text or "Aucun compte trouvé",
                         inline=False
                     )
 
                 # Ajouter un résumé
-                total_following = len(following)
                 already_whitelisted = sum(1 for user in following if str(user.get("fid", "")) in self.whitelisted_fids)
                 
                 embed.add_field(
                     name="Résumé",
-                    value=f"Total: {total_following} comptes\nDéjà whitelistés: {already_whitelisted}\nNon whitelistés: {total_following - already_whitelisted}",
+                    value=f"Affichés: {len(following)} comptes\nTotal suivis: {total_fetched}\nDéjà whitelistés: {already_whitelisted}\nNon whitelistés: {len(following) - already_whitelisted}",
                     inline=False
                 )
 
-                embed.set_footer(text="🥇 = Déjà whitelisté | ⭐ = Non whitelisté")
+                embed.set_footer(text="🥇 = Déjà whitelisté | ⭐ = Non whitelisté | Utilisez !importfollowing <username> <limit> pour voir plus de résultats")
 
                 await status_msg.delete()
                 await ctx.send(embed=embed)
