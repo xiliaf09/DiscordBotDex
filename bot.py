@@ -485,7 +485,7 @@ class TokenMonitor(commands.Cog):
 
     @check_trump_posts.before_loop
     async def before_check_trump_posts(self):
-        await self.wait_until_ready()
+        await self.bot.wait_until_ready()
 
     @commands.command()
     async def help(self, ctx):
@@ -1191,14 +1191,14 @@ class Bot(commands.Bot):
             # Cache initial Clanker tokens
             logger.info("Caching initial Clanker tokens...")
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{CLANKER_API_URL}/tokens/latest")
+                response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
                 response.raise_for_status()
-                clanker_tokens = response.json()
-                
-                for token in clanker_tokens:
-                    token_address = token.get('address')
-                    if token_address:
-                        clanker_monitor.seen_tokens.add(token_address)
+                data = response.json()
+                if "data" in data:
+                    for token in data["data"]:
+                        token_address = token.get('contract_address')
+                        if token_address:
+                            clanker_monitor.seen_tokens.add(token_address)
                 
                 logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
                 
