@@ -45,6 +45,7 @@ SEEN_TOKENS_FILE = "seen_tokens.json"
 SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 TRACKED_WALLETS_FILE = "tracked_wallets.json"
 BANNED_FIDS_FILE = "banned_fids.json"
+WHITELISTED_FIDS_FILE = "whitelisted_fids.json"
 
 # Initialize Web3
 w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
@@ -511,6 +512,9 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
         embed.add_field(name="!fidcheck <contract>", value="Vérifie le FID associé à un contrat Clanker.", inline=False)
         embed.add_field(name="!spamcheck", value="Liste les FIDs ayant déployé plus d'un token dans les dernières 24h.", inline=False)
+        embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
+        embed.add_field(name="!removewhitelist <fid>", value="Retire un FID de la whitelist.", inline=False)
+        embed.add_field(name="!checkwhitelist", value="Affiche la liste des FIDs whitelistés.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -522,6 +526,7 @@ class ClankerMonitor(commands.Cog):
         self.tracked_clanker_tokens = {}  # contract_address: {'first_seen': timestamp, 'alerted': False}
         self.default_volume_threshold = 5000
         self.banned_fids: Set[str] = self._load_banned_fids()
+        self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -560,6 +565,25 @@ class ClankerMonitor(commands.Cog):
                 json.dump(list(self.banned_fids), f)
         except Exception as e:
             logger.error(f"Error saving banned FIDs: {e}")
+
+    def _load_whitelisted_fids(self) -> Set[str]:
+        """Load whitelisted FIDs from file."""
+        try:
+            if os.path.exists(WHITELISTED_FIDS_FILE):
+                with open(WHITELISTED_FIDS_FILE, 'r') as f:
+                    return set(json.load(f))
+            return set()
+        except Exception as e:
+            logger.error(f"Error loading whitelisted FIDs: {e}")
+            return set()
+
+    def _save_whitelisted_fids(self):
+        """Save whitelisted FIDs to file."""
+        try:
+            with open(WHITELISTED_FIDS_FILE, 'w') as f:
+                json.dump(list(self.whitelisted_fids), f)
+        except Exception as e:
+            logger.error(f"Error saving whitelisted FIDs: {e}")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -866,6 +890,9 @@ class ClankerMonitor(commands.Cog):
                 logger.info(f"Skipping notification for banned FID: {fid}")
                 return
 
+            # Vérifier si le FID est whitelisté
+            is_premium = fid and fid in self.whitelisted_fids
+
             # Filtrage selon la méthode de déploiement
             platform = social_context.get('platform', 'Unknown')
             interface = social_context.get('interface', 'Unknown')
@@ -903,9 +930,9 @@ class ClankerMonitor(commands.Cog):
                     return  # On ne notifie pas si pas de lien Twitter pour Bankr
 
             embed = discord.Embed(
-                title="🆕 Nouveau Token Clanker",
+                title="🥇 Clanker Premium Lancé" if is_premium else "🆕 Nouveau Token Clanker",
                 description=token_data.get('metadata', {}).get('description', 'Un nouveau token a été déployé sur Clanker!'),
-                color=discord.Color(0x800080),
+                color=discord.Color.gold() if is_premium else discord.Color(0x800080),
                 timestamp=datetime.now(timezone.utc)
             )
 
@@ -926,7 +953,7 @@ class ClankerMonitor(commands.Cog):
             if fid:
                 embed.add_field(
                     name="FID",
-                    value=fid,
+                    value=fid + (" 🥇" if is_premium else ""),
                     inline=True
                 )
 
@@ -1160,6 +1187,47 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
         embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
+        await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def whitelist(self, ctx, fid: str):
+        """Ajouter un FID à la whitelist."""
+        if not fid.isdigit():
+            await ctx.send("❌ Le FID doit être un nombre.")
+            return
+
+        if fid in self.banned_fids:
+            await ctx.send("❌ Ce FID est banni. Veuillez d'abord le débannir avec !unbanfid.")
+            return
+
+        self.whitelisted_fids.add(fid)
+        self._save_whitelisted_fids()
+        await ctx.send(f"✅ FID {fid} ajouté à la whitelist avec succès.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def removewhitelist(self, ctx, fid: str):
+        """Retirer un FID de la whitelist."""
+        if fid in self.whitelisted_fids:
+            self.whitelisted_fids.remove(fid)
+            self._save_whitelisted_fids()
+            await ctx.send(f"✅ FID {fid} retiré de la whitelist avec succès.")
+        else:
+            await ctx.send("❌ Ce FID n'est pas dans la whitelist.")
+
+    @commands.command()
+    async def checkwhitelist(self, ctx):
+        """Afficher la liste des FIDs whitelistés."""
+        if not self.whitelisted_fids:
+            await ctx.send("Aucun FID n'est actuellement dans la whitelist.")
+            return
+            
+        embed = discord.Embed(
+            title="🥇 Liste des FIDs Premium",
+            description="\n".join(f"• FID: {fid}" for fid in sorted(self.whitelisted_fids)),
+            color=discord.Color.gold()
+        )
         await ctx.send(embed=embed)
 
 class Bot(commands.Bot):
