@@ -891,10 +891,12 @@ class WalletTracker(commands.Cog):
         self.channel = None
         self.tracked_wallets = self._load_tracked_wallets()
         self.wallet_positions = {}  # wallet_address: {token_address: {'amount': float, 'avg_price': float}}
+        self.monitor_wallets = tasks.loop(seconds=30)(self._monitor_wallets)
 
     async def setup_hook(self):
         """Initialize the wallet tracker."""
-        self.monitor_wallets.start()
+        if not self.monitor_wallets.is_running():
+            self.monitor_wallets.start()
 
     def _load_tracked_wallets(self) -> Dict:
         """Load tracked wallets from file."""
@@ -1006,8 +1008,7 @@ class WalletTracker(commands.Cog):
             logger.error(f"Error getting ETH price: {e}")
             return 0.0
 
-    @tasks.loop(seconds=30)
-    async def monitor_wallets(self):
+    async def _monitor_wallets(self):
         """Monitor tracked wallets for transactions."""
         if not self.channel:
             self.channel = self.bot.get_channel(CHANNEL_ID)
@@ -1145,7 +1146,7 @@ class WalletTracker(commands.Cog):
             except Exception as e:
                 logger.error(f"Error monitoring wallet {wallet_address}: {e}")
 
-    @monitor_wallets.before_loop
+    @_monitor_wallets.before_loop
     async def before_monitor_wallets(self):
         """Wait until the bot is ready before starting the monitor."""
         await self.bot.wait_until_ready()
