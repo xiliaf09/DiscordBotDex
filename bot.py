@@ -44,6 +44,7 @@ POLL_INTERVAL = 2  # seconds
 SEEN_TOKENS_FILE = "seen_tokens.json"
 SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 TRACKED_WALLETS_FILE = "tracked_wallets.json"
+BANNED_FIDS_FILE = "banned_fids.json"
 
 # Initialize Web3
 w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
@@ -505,7 +506,9 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!lastclanker", value="Affiche le dernier token déployé sur Clanker.", inline=False)
         embed.add_field(name="!volume <contract>", value="Affiche le volume du token sur 24h, 6h, 1h, 5min.", inline=False)
         embed.add_field(name="!setvolume <usd>", value="Définit le seuil global d'alerte volume (5min).", inline=False)
-        embed.add_field(name="!testvolumealert", value="Simule une alerte de volume Clanker.", inline=False)
+        embed.add_field(name="!banfid <fid>", value="Bannit un FID pour ne plus recevoir ses alertes de déploiement.", inline=False)
+        embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
+        embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -516,6 +519,7 @@ class ClankerMonitor(commands.Cog):
         self.is_active = True
         self.tracked_clanker_tokens = {}  # contract_address: {'first_seen': timestamp, 'alerted': False}
         self.default_volume_threshold = 5000
+        self.banned_fids: Set[str] = self._load_banned_fids()
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -535,6 +539,63 @@ class ClankerMonitor(commands.Cog):
                 json.dump(list(self.seen_tokens), f)
         except Exception as e:
             logger.error(f"Error saving seen Clanker tokens: {e}")
+
+    def _load_banned_fids(self) -> Set[str]:
+        """Load banned FIDs from file."""
+        try:
+            if os.path.exists(BANNED_FIDS_FILE):
+                with open(BANNED_FIDS_FILE, 'r') as f:
+                    return set(json.load(f))
+            return set()
+        except Exception as e:
+            logger.error(f"Error loading banned FIDs: {e}")
+            return set()
+
+    def _save_banned_fids(self):
+        """Save banned FIDs to file."""
+        try:
+            with open(BANNED_FIDS_FILE, 'w') as f:
+                json.dump(list(self.banned_fids), f)
+        except Exception as e:
+            logger.error(f"Error saving banned FIDs: {e}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def banfid(self, ctx, fid: str):
+        """Bannir un FID pour ne plus recevoir ses alertes de déploiement."""
+        if not fid.isdigit():
+            await ctx.send("❌ Le FID doit être un nombre.")
+            return
+            
+        self.banned_fids.add(fid)
+        self._save_banned_fids()
+        await ctx.send(f"✅ FID {fid} banni avec succès. Vous ne recevrez plus d'alertes de ce compte.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def unbanfid(self, ctx, fid: str):
+        """Débannir un FID pour recevoir à nouveau ses alertes de déploiement."""
+        if fid in self.banned_fids:
+            self.banned_fids.remove(fid)
+            self._save_banned_fids()
+            await ctx.send(f"✅ FID {fid} débanni avec succès. Vous recevrez à nouveau les alertes de ce compte.")
+        else:
+            await ctx.send("❌ Ce FID n'est pas banni.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def listbanned(self, ctx):
+        """Afficher la liste des FIDs bannis."""
+        if not self.banned_fids:
+            await ctx.send("Aucun FID n'est actuellement banni.")
+            return
+            
+        embed = discord.Embed(
+            title="Liste des FIDs bannis",
+            description="\n".join(f"• FID: {fid}" for fid in sorted(self.banned_fids)),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
 
     @commands.command()
     async def clankeron(self, ctx):
@@ -602,6 +663,13 @@ class ClankerMonitor(commands.Cog):
             logger.info(f"[DEBUG] Platform: {social_context.get('platform')}")
             logger.info(f"[DEBUG] Interface: {social_context.get('interface')}")
             logger.info(f"[DEBUG] Username: {social_context.get('username')}")
+            logger.info(f"[DEBUG] FID: {social_context.get('fid')}")
+
+            # Vérifier si le FID est banni
+            fid = str(social_context.get('fid', ''))
+            if fid and fid in self.banned_fids:
+                logger.info(f"Skipping notification for banned FID: {fid}")
+                return
 
             # Filtrage selon la méthode de déploiement
             platform = social_context.get('platform', 'Unknown')
@@ -620,7 +688,7 @@ class ClankerMonitor(commands.Cog):
             tweet_link = None
             clanker_link = f"https://www.clanker.world/clanker/{contract_address}" if contract_address else None
 
-            # Pour Farcaster, générer le lien Warpcast si username et cast_hash sont présents, sinon afficher le cast_hash brut
+            # Pour Farcaster, générer le lien Warpcast si username et cast_hash sont présents
             if platform.lower() == "farcaster":
                 if username and cast_hash:
                     tweet_link = f"https://warpcast.com/{username}/{cast_hash}"
@@ -659,6 +727,14 @@ class ClankerMonitor(commands.Cog):
                 inline=True
             )
 
+            # Add FID if available
+            if fid:
+                embed.add_field(
+                    name="FID",
+                    value=fid,
+                    inline=True
+                )
+
             embed.add_field(
                 name="Contract",
                 value=f"`{contract_address or 'Unknown'}`",
@@ -673,7 +749,7 @@ class ClankerMonitor(commands.Cog):
                     inline=False
                 )
 
-            # Add deployment tweet/cast link (Warpcast, Twitter ou cast_hash brut)
+            # Add deployment tweet/cast link
             embed.add_field(
                 name="Tweet/Cast de Déploiement",
                 value=tweet_link,
