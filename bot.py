@@ -527,8 +527,12 @@ class ClankerMonitor(commands.Cog):
         self.is_active = True
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
+        
+        # Charger les FIDs bannis et whitelistés au démarrage
+        logger.info("Loading banned and whitelisted FIDs...")
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
+        logger.info(f"Loaded {len(self.banned_fids)} banned FIDs and {len(self.whitelisted_fids)} whitelisted FIDs")
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -554,8 +558,11 @@ class ClankerMonitor(commands.Cog):
         try:
             if os.path.exists(BANNED_FIDS_FILE):
                 with open(BANNED_FIDS_FILE, 'r') as f:
-                    return set(json.load(f))
+                    banned_fids = set(json.load(f))
+                    logger.info(f"Successfully loaded {len(banned_fids)} banned FIDs from {BANNED_FIDS_FILE}")
+                    return banned_fids
             # Si le fichier n'existe pas, le créer avec un ensemble vide
+            logger.info(f"Creating new {BANNED_FIDS_FILE} file")
             self._save_banned_fids(set())
             return set()
         except Exception as e:
@@ -568,7 +575,7 @@ class ClankerMonitor(commands.Cog):
             # Si aucun ensemble n'est fourni, utiliser l'ensemble actuel
             fids_to_save = list(fids if fids is not None else self.banned_fids)
             # Créer le répertoire parent si nécessaire
-            os.makedirs(os.path.dirname(BANNED_FIDS_FILE), exist_ok=True)
+            os.makedirs(os.path.dirname(BANNED_FIDS_FILE) or '.', exist_ok=True)
             with open(BANNED_FIDS_FILE, 'w') as f:
                 json.dump(fids_to_save, f, indent=2)
             logger.info(f"Successfully saved {len(fids_to_save)} banned FIDs to {BANNED_FIDS_FILE}")
@@ -580,8 +587,11 @@ class ClankerMonitor(commands.Cog):
         try:
             if os.path.exists(WHITELISTED_FIDS_FILE):
                 with open(WHITELISTED_FIDS_FILE, 'r') as f:
-                    return set(json.load(f))
+                    whitelisted_fids = set(json.load(f))
+                    logger.info(f"Successfully loaded {len(whitelisted_fids)} whitelisted FIDs from {WHITELISTED_FIDS_FILE}")
+                    return whitelisted_fids
             # Si le fichier n'existe pas, le créer avec un ensemble vide
+            logger.info(f"Creating new {WHITELISTED_FIDS_FILE} file")
             self._save_whitelisted_fids(set())
             return set()
         except Exception as e:
@@ -594,7 +604,7 @@ class ClankerMonitor(commands.Cog):
             # Si aucun ensemble n'est fourni, utiliser l'ensemble actuel
             fids_to_save = list(fids if fids is not None else self.whitelisted_fids)
             # Créer le répertoire parent si nécessaire
-            os.makedirs(os.path.dirname(WHITELISTED_FIDS_FILE), exist_ok=True)
+            os.makedirs(os.path.dirname(WHITELISTED_FIDS_FILE) or '.', exist_ok=True)
             with open(WHITELISTED_FIDS_FILE, 'w') as f:
                 json.dump(fids_to_save, f, indent=2)
             logger.info(f"Successfully saved {len(fids_to_save)} whitelisted FIDs to {WHITELISTED_FIDS_FILE}")
