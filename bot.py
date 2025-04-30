@@ -516,6 +516,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
         embed.add_field(name="!removewhitelist <fid>", value="Retire un FID de la whitelist.", inline=False)
         embed.add_field(name="!checkwhitelist", value="Affiche la liste des FIDs whitelistés.", inline=False)
+        embed.add_field(name="!importwhitelist", value="Importe une liste de FIDs depuis un fichier texte (un FID par ligne).", inline=False)
         embed.add_field(name="!importfollowing <username> <limit>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
         await ctx.send(embed=embed)
 
@@ -1255,6 +1256,99 @@ class ClankerMonitor(commands.Cog):
             await ctx.send(f"✅ FID {fid} retiré de la whitelist avec succès.")
         else:
             await ctx.send("❌ Ce FID n'est pas dans la whitelist.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def importwhitelist(self, ctx):
+        """Importe une liste de FIDs depuis un fichier texte attaché au message.
+        Le fichier doit contenir un FID par ligne."""
+        if not ctx.message.attachments:
+            await ctx.send("❌ Veuillez attacher un fichier texte contenant les FIDs (un par ligne).")
+            return
+
+        attachment = ctx.message.attachments[0]
+        if not attachment.filename.endswith('.txt'):
+            await ctx.send("❌ Le fichier doit être au format .txt")
+            return
+
+        status_msg = await ctx.send("📥 Traitement du fichier en cours...")
+
+        try:
+            # Télécharger et lire le contenu du fichier
+            content = await attachment.read()
+            content = content.decode('utf-8')
+            
+            # Extraire les FIDs (un par ligne)
+            fids = set()
+            invalid_fids = []
+            banned_fids = []
+            already_whitelisted = []
+            
+            for line in content.split('\n'):
+                fid = line.strip()
+                if not fid:  # Ignorer les lignes vides
+                    continue
+                    
+                if not fid.isdigit():
+                    invalid_fids.append(fid)
+                    continue
+                    
+                if fid in self.banned_fids:
+                    banned_fids.append(fid)
+                    continue
+                    
+                if fid in self.whitelisted_fids:
+                    already_whitelisted.append(fid)
+                    continue
+                    
+                fids.add(fid)
+
+            # Ajouter les nouveaux FIDs à la whitelist
+            self.whitelisted_fids.update(fids)
+            self._save_whitelisted_fids()
+
+            # Créer un embed avec le résumé
+            embed = discord.Embed(
+                title="📊 Résultat de l'importation",
+                color=discord.Color.green() if fids else discord.Color.orange()
+            )
+
+            embed.add_field(
+                name="✅ FIDs ajoutés",
+                value=f"{len(fids)} FIDs ajoutés à la whitelist",
+                inline=False
+            )
+
+            if already_whitelisted:
+                embed.add_field(
+                    name="ℹ️ Déjà whitelistés",
+                    value=f"{len(already_whitelisted)} FIDs déjà dans la whitelist",
+                    inline=False
+                )
+
+            if banned_fids:
+                embed.add_field(
+                    name="⚠️ FIDs bannis (ignorés)",
+                    value=f"{len(banned_fids)} FIDs sont bannis et n'ont pas été ajoutés",
+                    inline=False
+                )
+
+            if invalid_fids:
+                invalid_sample = invalid_fids[:5]
+                embed.add_field(
+                    name="❌ FIDs invalides",
+                    value=f"{len(invalid_fids)} FIDs invalides trouvés\nExemples: {', '.join(invalid_sample)}{'...' if len(invalid_fids) > 5 else ''}",
+                    inline=False
+                )
+
+            embed.set_footer(text="Utilisez !checkwhitelist pour voir la liste complète")
+            
+            await status_msg.delete()
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Error importing whitelist: {e}")
+            await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation du fichier.")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
