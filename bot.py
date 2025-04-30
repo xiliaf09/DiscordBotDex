@@ -511,12 +511,15 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!banfid <fid>", value="Bannit un FID pour ne plus recevoir ses alertes de déploiement.", inline=False)
         embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
+        embed.add_field(name="!importbanlist", value="Importe des listes de FIDs à bannir depuis des fichiers texte.", inline=False)
+        embed.add_field(name="!exportbanlist", value="Exporte la liste des FIDs bannis dans un fichier.", inline=False)
         embed.add_field(name="!fidcheck <contract>", value="Vérifie le FID associé à un contrat Clanker.", inline=False)
         embed.add_field(name="!spamcheck", value="Liste les FIDs ayant déployé plus d'un token dans les dernières 24h.", inline=False)
         embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
         embed.add_field(name="!removewhitelist <fid>", value="Retire un FID de la whitelist.", inline=False)
         embed.add_field(name="!checkwhitelist", value="Affiche la liste des FIDs whitelistés.", inline=False)
-        embed.add_field(name="!importwhitelist", value="Importe des listes de FIDs depuis des fichiers texte attachés au message. Les fichiers doivent contenir un FID par ligne.", inline=False)
+        embed.add_field(name="!importwhitelist", value="Importe des listes de FIDs depuis des fichiers texte.", inline=False)
+        embed.add_field(name="!exportwhitelist", value="Exporte la liste des FIDs whitelistés dans un fichier.", inline=False)
         embed.add_field(name="!importfollowing <username> <limit>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
         await ctx.send(embed=embed)
 
@@ -1520,6 +1523,152 @@ class ClankerMonitor(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error importing whitelist: {e}")
+            await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation des fichiers.")
+
+    @commands.command(name='exportbanlist')
+    @commands.has_permissions(administrator=True)
+    async def export_banlist(self, ctx):
+        """Exporte le fichier de banlist"""
+        try:
+            if os.path.exists(BANNED_FIDS_FILE):
+                await ctx.send(file=discord.File(BANNED_FIDS_FILE))
+            else:
+                await ctx.send("❌ Le fichier de banlist n'existe pas.")
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors de l'export: {str(e)}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def importbanlist(self, ctx):
+        """Importe des listes de FIDs à bannir depuis des fichiers texte attachés au message.
+        Les fichiers doivent contenir un FID par ligne."""
+        if not ctx.message.attachments:
+            await ctx.send("❌ Veuillez attacher un ou plusieurs fichiers texte contenant les FIDs (un par ligne).")
+            return
+
+        # Vérifier que tous les fichiers sont au format .txt
+        non_txt_files = [att.filename for att in ctx.message.attachments if not att.filename.endswith('.txt')]
+        if non_txt_files:
+            await ctx.send(f"❌ Les fichiers suivants ne sont pas au format .txt : {', '.join(non_txt_files)}")
+            return
+
+        status_msg = await ctx.send(f"📥 Traitement de {len(ctx.message.attachments)} fichier(s) en cours...")
+
+        try:
+            # Statistiques globales
+            total_stats = {
+                'added': set(),
+                'invalid': [],
+                'whitelisted': [],
+                'already_banned': []
+            }
+            
+            # Statistiques par fichier
+            file_stats = {}
+
+            # Traiter chaque fichier
+            for attachment in ctx.message.attachments:
+                # Statistiques pour ce fichier
+                file_stats[attachment.filename] = {
+                    'added': set(),
+                    'invalid': [],
+                    'whitelisted': [],
+                    'already_banned': []
+                }
+
+                # Télécharger et lire le contenu du fichier
+                content = await attachment.read()
+                content = content.decode('utf-8')
+                
+                # Traiter chaque ligne
+                for line in content.split('\n'):
+                    fid = line.strip()
+                    if not fid:  # Ignorer les lignes vides
+                        continue
+                        
+                    if not fid.isdigit():
+                        file_stats[attachment.filename]['invalid'].append(fid)
+                        total_stats['invalid'].append(fid)
+                        continue
+                        
+                    if fid in self.whitelisted_fids:
+                        file_stats[attachment.filename]['whitelisted'].append(fid)
+                        total_stats['whitelisted'].append(fid)
+                        continue
+                        
+                    if fid in self.banned_fids:
+                        file_stats[attachment.filename]['already_banned'].append(fid)
+                        total_stats['already_banned'].append(fid)
+                        continue
+                        
+                    file_stats[attachment.filename]['added'].add(fid)
+                    total_stats['added'].add(fid)
+
+            # Ajouter tous les nouveaux FIDs à la banlist
+            self.banned_fids.update(total_stats['added'])
+            self._save_banned_fids()
+
+            # Créer un embed avec le résumé global
+            embed = discord.Embed(
+                title="📊 Résultat de l'importation multiple",
+                description=f"Traitement de {len(ctx.message.attachments)} fichier(s) terminé",
+                color=discord.Color.green() if total_stats['added'] else discord.Color.orange()
+            )
+
+            # Résumé global
+            embed.add_field(
+                name="✅ Total FIDs bannis",
+                value=f"{len(total_stats['added'])} FIDs ajoutés à la banlist",
+                inline=False
+            )
+
+            if total_stats['already_banned']:
+                embed.add_field(
+                    name="ℹ️ Total déjà bannis",
+                    value=f"{len(total_stats['already_banned'])} FIDs déjà dans la banlist",
+                    inline=False
+                )
+
+            if total_stats['whitelisted']:
+                embed.add_field(
+                    name="⚠️ Total FIDs whitelistés (ignorés)",
+                    value=f"{len(total_stats['whitelisted'])} FIDs sont whitelistés et n'ont pas été bannis",
+                    inline=False
+                )
+
+            if total_stats['invalid']:
+                invalid_sample = total_stats['invalid'][:5]
+                embed.add_field(
+                    name="❌ Total FIDs invalides",
+                    value=f"{len(total_stats['invalid'])} FIDs invalides trouvés\nExemples: {', '.join(invalid_sample)}{'...' if len(total_stats['invalid']) > 5 else ''}",
+                    inline=False
+                )
+
+            # Détails par fichier
+            for filename, stats in file_stats.items():
+                details = []
+                if stats['added']:
+                    details.append(f"✅ Bannis: {len(stats['added'])}")
+                if stats['already_banned']:
+                    details.append(f"ℹ️ Déjà bannis: {len(stats['already_banned'])}")
+                if stats['whitelisted']:
+                    details.append(f"⚠️ Whitelistés: {len(stats['whitelisted'])}")
+                if stats['invalid']:
+                    details.append(f"❌ Invalides: {len(stats['invalid'])}")
+                
+                embed.add_field(
+                    name=f"📄 {filename}",
+                    value="\n".join(details) or "Aucun FID traité",
+                    inline=True
+                )
+
+            embed.set_footer(text="Utilisez !listbanned pour voir la liste complète")
+            
+            await status_msg.delete()
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Error importing banlist: {e}")
             await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation des fichiers.")
 
 class Bot(commands.Bot):
