@@ -3,13 +3,17 @@ import json
 import sys
 from datetime import datetime
 
-WARPCAST_API_URL = "https://client.warpcast.com/v2"
+WARPCAST_API_URL = "https://api.warpcast.com"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "application/json"
+}
 
 def test_api_connection():
     """Test the connection to the Warpcast API."""
     try:
-        # Try to get a random user's profile as a test
-        response = requests.get(f"{WARPCAST_API_URL}/user?username=dwr")
+        # Try to get the channels list as a test (public endpoint)
+        response = requests.get(f"{WARPCAST_API_URL}/v2/all-channels", headers=HEADERS)
         if response.status_code == 200:
             print("✅ Connection à l'API Warpcast réussie!")
             return True
@@ -23,7 +27,7 @@ def test_api_connection():
 def get_user_fid(username):
     """Get the FID of a user by their username."""
     try:
-        response = requests.get(f"{WARPCAST_API_URL}/user?username={username}")
+        response = requests.get(f"{WARPCAST_API_URL}/v2/user-by-username?username={username}", headers=HEADERS)
         if response.status_code == 200:
             data = response.json()
             return data['result']['user']['fid']
@@ -39,7 +43,7 @@ def get_following_fids(username):
         return []
 
     try:
-        response = requests.get(f"{WARPCAST_API_URL}/following?fid={user_fid}&limit=1000")
+        response = requests.get(f"{WARPCAST_API_URL}/v2/following?fid={user_fid}&limit=1000", headers=HEADERS)
         if response.status_code == 200:
             data = response.json()
             following = data['result']['users']
