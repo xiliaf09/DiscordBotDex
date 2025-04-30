@@ -1030,7 +1030,7 @@ class ClankerMonitor(commands.Cog):
                     name="Username",
                     value=f"[@{username}](https://warpcast.com/{username})",
                 inline=True
-            )
+                )
 
             # Add market cap if available
             if market_cap := token_data.get('starting_market_cap'):
@@ -1236,11 +1236,11 @@ class ClankerMonitor(commands.Cog):
         """Ajouter un FID à la whitelist."""
         if not fid.isdigit():
             await ctx.send("❌ Le FID doit être un nombre.")
-                return
+            return
 
         if fid in self.banned_fids:
             await ctx.send("❌ Ce FID est banni. Veuillez d'abord le débannir avec !unbanfid.")
-                return
+            return
 
         self.whitelisted_fids.add(fid)
         self._save_whitelisted_fids()  # Sauvegarder immédiatement après modification
@@ -1259,106 +1259,8 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def importwhitelist(self, ctx):
-        """Importe une liste de FIDs depuis un fichier texte attaché au message.
-        Le fichier doit contenir un FID par ligne."""
-        if not ctx.message.attachments:
-            await ctx.send("❌ Veuillez attacher un fichier texte contenant les FIDs (un par ligne).")
-            return
-
-        attachment = ctx.message.attachments[0]
-        if not attachment.filename.endswith('.txt'):
-            await ctx.send("❌ Le fichier doit être au format .txt")
-            return
-
-        status_msg = await ctx.send("📥 Traitement du fichier en cours...")
-
-        try:
-            # Télécharger et lire le contenu du fichier
-            content = await attachment.read()
-            content = content.decode('utf-8')
-            
-            # Extraire les FIDs (un par ligne)
-            fids = set()
-            invalid_fids = []
-            banned_fids = []
-            already_whitelisted = []
-            
-            for line in content.split('\n'):
-                fid = line.strip()
-                if not fid:  # Ignorer les lignes vides
-                    continue
-                    
-                if not fid.isdigit():
-                    invalid_fids.append(fid)
-                    continue
-                    
-                if fid in self.banned_fids:
-                    banned_fids.append(fid)
-                    continue
-                    
-                if fid in self.whitelisted_fids:
-                    already_whitelisted.append(fid)
-                    continue
-                    
-                fids.add(fid)
-
-            # Ajouter les nouveaux FIDs à la whitelist
-            self.whitelisted_fids.update(fids)
-            self._save_whitelisted_fids()
-
-            # Créer un embed avec le résumé
-            embed = discord.Embed(
-                title="📊 Résultat de l'importation",
-                color=discord.Color.green() if fids else discord.Color.orange()
-            )
-
-            embed.add_field(
-                name="✅ FIDs ajoutés",
-                value=f"{len(fids)} FIDs ajoutés à la whitelist",
-                inline=False
-            )
-
-            if already_whitelisted:
-                embed.add_field(
-                    name="ℹ️ Déjà whitelistés",
-                    value=f"{len(already_whitelisted)} FIDs déjà dans la whitelist",
-                    inline=False
-                )
-
-            if banned_fids:
-                embed.add_field(
-                    name="⚠️ FIDs bannis (ignorés)",
-                    value=f"{len(banned_fids)} FIDs sont bannis et n'ont pas été ajoutés",
-                    inline=False
-                )
-
-            if invalid_fids:
-                invalid_sample = invalid_fids[:5]
-                embed.add_field(
-                    name="❌ FIDs invalides",
-                    value=f"{len(invalid_fids)} FIDs invalides trouvés\nExemples: {', '.join(invalid_sample)}{'...' if len(invalid_fids) > 5 else ''}",
-                    inline=False
-                )
-
-            embed.set_footer(text="Utilisez !checkwhitelist pour voir la liste complète")
-            
-            await status_msg.delete()
-            await ctx.send(embed=embed)
-
-        except Exception as e:
-            logger.error(f"Error importing whitelist: {e}")
-            await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation du fichier.")
-
-    @commands.command()
-    @commands.has_permissions(administrator=True)
     async def importfollowing(self, ctx, username: str, limit: int = 100):
-        """Importe les FIDs des comptes suivis par un utilisateur Warpcast.
-        
-        Args:
-            username (str): Le nom d'utilisateur Warpcast
-            limit (int, optional): Nombre maximum de comptes à afficher. Par défaut 100.
-        """
+        """Importe les FIDs des comptes suivis par un utilisateur Warpcast."""
         try:
             if limit <= 0:
                 await ctx.send("❌ La limite doit être un nombre positif.")
@@ -1373,7 +1275,7 @@ class ClankerMonitor(commands.Cog):
                     params={"q": username}
                 )
                 response.raise_for_status()
-                    data = response.json()
+                data = response.json()
 
                 if not data.get("result", {}).get("users"):
                     await status_msg.edit(content=f"❌ Utilisateur @{username} non trouvé sur Warpcast.")
@@ -1427,7 +1329,7 @@ class ClankerMonitor(commands.Cog):
                 following = following[:limit]
                 
                 # Créer un embed avec la liste des comptes trouvés
-                        embed = discord.Embed(
+                embed = discord.Embed(
                     title=f"👥 Comptes suivis par @{username}",
                     description=f"Voici les {len(following)} premiers FIDs des comptes suivis (sur un total de {total_fetched}). Utilisez !whitelist <fid> pour les ajouter à la whitelist.",
                     color=discord.Color.blue()
@@ -1447,7 +1349,7 @@ class ClankerMonitor(commands.Cog):
                         status = "🥇" if str(fid) in self.whitelisted_fids else "⭐"
                         field_text += f"{status} **FID:** {fid} - @{username} ({display_name})\n"
 
-                        embed.add_field(
+                    embed.add_field(
                         name=f"Liste {i+1}/{min(len(chunks), 15)}",
                         value=field_text or "Aucun compte trouvé",
                         inline=False
@@ -1456,11 +1358,11 @@ class ClankerMonitor(commands.Cog):
                 # Ajouter un résumé
                 already_whitelisted = sum(1 for user in following if str(user.get("fid", "")) in self.whitelisted_fids)
 
-                        embed.add_field(
+                embed.add_field(
                     name="Résumé",
                     value=f"Affichés: {len(following)} comptes\nTotal suivis: {total_fetched}\nDéjà whitelistés: {already_whitelisted}\nNon whitelistés: {len(following) - already_whitelisted}",
-                            inline=False
-                        )
+                    inline=False
+                )
 
                 embed.set_footer(text="🥇 = Déjà whitelisté | ⭐ = Non whitelisté | Utilisez !importfollowing <username> <limit> pour voir plus de résultats")
 
@@ -1470,7 +1372,7 @@ class ClankerMonitor(commands.Cog):
         except httpx.HTTPError as e:
             logger.error(f"HTTP error during following import: {e}")
             await status_msg.edit(content="❌ Erreur lors de la connexion à l'API Warpcast")
-            except Exception as e:
+        except Exception as e:
             logger.error(f"Error during following import: {e}")
             await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation")
 
