@@ -596,8 +596,14 @@ class ClankerMonitor(commands.Cog):
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
-            # Filtrage selon la méthode de déploiement
+            # Logging des données sociales pour débogage
             social_context = token_data.get('social_context', {})
+            logger.info(f"[DEBUG] Social Context Data: {social_context}")
+            logger.info(f"[DEBUG] Platform: {social_context.get('platform')}")
+            logger.info(f"[DEBUG] Interface: {social_context.get('interface')}")
+            logger.info(f"[DEBUG] Username: {social_context.get('username')}")
+
+            # Filtrage selon la méthode de déploiement
             platform = social_context.get('platform', 'Unknown')
             interface = social_context.get('interface', 'Unknown')
             username = social_context.get('username')
