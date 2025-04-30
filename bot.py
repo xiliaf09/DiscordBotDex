@@ -1394,16 +1394,18 @@ class ClankerMonitor(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def importwhitelist(self, ctx):
-        """Importe des listes de FIDs depuis des fichiers texte attachés au message.
-        Les fichiers doivent contenir un FID par ligne."""
+        """Importe des listes de FIDs depuis des fichiers texte (.txt) ou JSON (.json) attachés au message.
+        Format .txt : un FID par ligne
+        Format .json : liste de FIDs exportée par !exportwhitelist"""
         if not ctx.message.attachments:
-            await ctx.send("❌ Veuillez attacher un ou plusieurs fichiers texte contenant les FIDs (un par ligne).")
+            await ctx.send("❌ Veuillez attacher un ou plusieurs fichiers (.txt ou .json) contenant les FIDs.")
             return
 
-        # Vérifier que tous les fichiers sont au format .txt
-        non_txt_files = [att.filename for att in ctx.message.attachments if not att.filename.endswith('.txt')]
-        if non_txt_files:
-            await ctx.send(f"❌ Les fichiers suivants ne sont pas au format .txt : {', '.join(non_txt_files)}")
+        # Vérifier que tous les fichiers sont au format accepté
+        invalid_files = [att.filename for att in ctx.message.attachments 
+                        if not (att.filename.endswith('.txt') or att.filename.endswith('.json'))]
+        if invalid_files:
+            await ctx.send(f"❌ Les fichiers suivants ne sont pas au format .txt ou .json : {', '.join(invalid_files)}")
             return
 
         status_msg = await ctx.send(f"📥 Traitement de {len(ctx.message.attachments)} fichier(s) en cours...")
@@ -1434,13 +1436,32 @@ class ClankerMonitor(commands.Cog):
                 content = await attachment.read()
                 content = content.decode('utf-8')
                 
-                # Traiter chaque ligne
-                for line in content.split('\n'):
-                    fid = line.strip()
+                # Liste des FIDs à traiter
+                fids_to_process = []
+                
+                # Traiter selon le format du fichier
+                if attachment.filename.endswith('.json'):
+                    try:
+                        json_data = json.loads(content)
+                        if isinstance(json_data, list):
+                            fids_to_process = [str(fid).strip() for fid in json_data]
+                        else:
+                            file_stats[attachment.filename]['invalid'].append("Format JSON invalide")
+                            total_stats['invalid'].append("Format JSON invalide")
+                            continue
+                    except json.JSONDecodeError:
+                        file_stats[attachment.filename]['invalid'].append("JSON invalide")
+                        total_stats['invalid'].append("JSON invalide")
+                        continue
+                else:  # .txt
+                    fids_to_process = [line.strip() for line in content.split('\n') if line.strip()]
+
+                # Traiter chaque FID
+                for fid in fids_to_process:
                     if not fid:  # Ignorer les lignes vides
                         continue
                         
-                    if not fid.isdigit():
+                    if not str(fid).isdigit():
                         file_stats[attachment.filename]['invalid'].append(fid)
                         total_stats['invalid'].append(fid)
                         continue
@@ -1494,7 +1515,7 @@ class ClankerMonitor(commands.Cog):
                 invalid_sample = total_stats['invalid'][:5]
                 embed.add_field(
                     name="❌ Total FIDs invalides",
-                    value=f"{len(total_stats['invalid'])} FIDs invalides trouvés\nExemples: {', '.join(invalid_sample)}{'...' if len(total_stats['invalid']) > 5 else ''}",
+                    value=f"{len(total_stats['invalid'])} FIDs invalides trouvés\nExemples: {', '.join(str(x) for x in invalid_sample)}{'...' if len(total_stats['invalid']) > 5 else ''}",
                     inline=False
                 )
 
