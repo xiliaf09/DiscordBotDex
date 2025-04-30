@@ -981,8 +981,8 @@ class ClankerMonitor(commands.Cog):
                 embed.add_field(
                     name="FID",
                     value=fid + (" 🥇" if is_premium else ""),
-                    inline=True
-                )
+                inline=True
+            )
 
             embed.add_field(
                 name="Contract",
@@ -1029,8 +1029,8 @@ class ClankerMonitor(commands.Cog):
                 embed.add_field(
                     name="Username",
                     value=f"[@{username}](https://warpcast.com/{username})",
-                    inline=True
-                )
+                inline=True
+            )
 
             # Add market cap if available
             if market_cap := token_data.get('starting_market_cap'):
@@ -1236,11 +1236,11 @@ class ClankerMonitor(commands.Cog):
         """Ajouter un FID à la whitelist."""
         if not fid.isdigit():
             await ctx.send("❌ Le FID doit être un nombre.")
-            return
+                return
 
         if fid in self.banned_fids:
             await ctx.send("❌ Ce FID est banni. Veuillez d'abord le débannir avec !unbanfid.")
-            return
+                return
 
         self.whitelisted_fids.add(fid)
         self._save_whitelisted_fids()  # Sauvegarder immédiatement après modification
@@ -1373,7 +1373,7 @@ class ClankerMonitor(commands.Cog):
                     params={"q": username}
                 )
                 response.raise_for_status()
-                data = response.json()
+                    data = response.json()
 
                 if not data.get("result", {}).get("users"):
                     await status_msg.edit(content=f"❌ Utilisateur @{username} non trouvé sur Warpcast.")
@@ -1427,7 +1427,7 @@ class ClankerMonitor(commands.Cog):
                 following = following[:limit]
                 
                 # Créer un embed avec la liste des comptes trouvés
-                embed = discord.Embed(
+                        embed = discord.Embed(
                     title=f"👥 Comptes suivis par @{username}",
                     description=f"Voici les {len(following)} premiers FIDs des comptes suivis (sur un total de {total_fetched}). Utilisez !whitelist <fid> pour les ajouter à la whitelist.",
                     color=discord.Color.blue()
@@ -1446,8 +1446,8 @@ class ClankerMonitor(commands.Cog):
                         # Marquer si déjà whitelisté
                         status = "🥇" if str(fid) in self.whitelisted_fids else "⭐"
                         field_text += f"{status} **FID:** {fid} - @{username} ({display_name})\n"
-                    
-                    embed.add_field(
+
+                        embed.add_field(
                         name=f"Liste {i+1}/{min(len(chunks), 15)}",
                         value=field_text or "Aucun compte trouvé",
                         inline=False
@@ -1455,12 +1455,12 @@ class ClankerMonitor(commands.Cog):
 
                 # Ajouter un résumé
                 already_whitelisted = sum(1 for user in following if str(user.get("fid", "")) in self.whitelisted_fids)
-                
-                embed.add_field(
+
+                        embed.add_field(
                     name="Résumé",
                     value=f"Affichés: {len(following)} comptes\nTotal suivis: {total_fetched}\nDéjà whitelistés: {already_whitelisted}\nNon whitelistés: {len(following) - already_whitelisted}",
-                    inline=False
-                )
+                            inline=False
+                        )
 
                 embed.set_footer(text="🥇 = Déjà whitelisté | ⭐ = Non whitelisté | Utilisez !importfollowing <username> <limit> pour voir plus de résultats")
 
@@ -1470,9 +1470,21 @@ class ClankerMonitor(commands.Cog):
         except httpx.HTTPError as e:
             logger.error(f"HTTP error during following import: {e}")
             await status_msg.edit(content="❌ Erreur lors de la connexion à l'API Warpcast")
-        except Exception as e:
+            except Exception as e:
             logger.error(f"Error during following import: {e}")
             await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation")
+
+    @commands.command(name='exportwhitelist')
+    @commands.has_permissions(administrator=True)
+    async def export_whitelist(self, ctx):
+        """Exporte le fichier de whitelist"""
+        try:
+            if os.path.exists(WHITELISTED_FIDS_FILE):
+                await ctx.send(file=discord.File(WHITELISTED_FIDS_FILE))
+            else:
+                await ctx.send("❌ Le fichier de whitelist n'existe pas.")
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors de l'export: {str(e)}")
 
 class Bot(commands.Bot):
     def __init__(self):
@@ -1520,8 +1532,8 @@ class Bot(commands.Bot):
                 if "data" in data:
                     for token in data["data"]:
                         token_address = token.get('contract_address')
-                        if token_address:
-                            clanker_monitor.seen_tokens.add(token_address)
+                    if token_address:
+                        clanker_monitor.seen_tokens.add(token_address)
                 
                 logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
                 
