@@ -891,6 +891,9 @@ class WalletTracker(commands.Cog):
         self.channel = None
         self.tracked_wallets = self._load_tracked_wallets()
         self.wallet_positions = {}  # wallet_address: {token_address: {'amount': float, 'avg_price': float}}
+
+    async def setup_hook(self):
+        """Initialize the wallet tracker."""
         self.monitor_wallets.start()
 
     def _load_tracked_wallets(self) -> Dict:
@@ -1165,6 +1168,9 @@ class Bot(commands.Bot):
         await self.add_cog(token_monitor)
         await self.add_cog(clanker_monitor)
         await self.add_cog(wallet_tracker)
+        
+        # Initialize cogs
+        await wallet_tracker.setup_hook()
         
         # Cache initial tokens before starting monitoring
         try:
