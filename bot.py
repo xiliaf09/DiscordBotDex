@@ -635,7 +635,7 @@ class ClankerMonitor(commands.Cog):
                 )
 
                 # Ajouter le FID s'il existe
-                fid = social_context.get('fid')
+                fid = token.get('requestor_fid')
                 if fid:
                     embed.add_field(
                         name="FID",
@@ -750,10 +750,10 @@ class ClankerMonitor(commands.Cog):
             logger.info(f"[DEBUG] Platform: {social_context.get('platform')}")
             logger.info(f"[DEBUG] Interface: {social_context.get('interface')}")
             logger.info(f"[DEBUG] Username: {social_context.get('username')}")
-            logger.info(f"[DEBUG] FID: {social_context.get('fid')}")
+            logger.info(f"[DEBUG] FID: {token_data.get('requestor_fid')}")
 
             # Vérifier si le FID est banni
-            fid = str(social_context.get('fid', ''))
+            fid = str(token_data.get('requestor_fid', ''))
             if fid and fid in self.banned_fids:
                 logger.info(f"Skipping notification for banned FID: {fid}")
                 return
