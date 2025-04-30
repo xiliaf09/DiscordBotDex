@@ -327,6 +327,33 @@ class TokenMonitor(commands.Cog):
             if token.get('icon'):
                 embed.set_thumbnail(url=token['icon'])
 
+            # Add social context if available
+            social_context = token.get('social_context', {})
+            platform = social_context.get('platform', 'Unknown')
+            interface = social_context.get('interface', 'Unknown')
+            username = social_context.get('username')
+            embed.add_field(
+                name="Déployé via",
+                value=f"{platform} ({interface})",
+                inline=True
+            )
+
+            # Add username with Warpcast link if available
+            if username and platform.lower() == "farcaster":
+                embed.add_field(
+                    name="Username",
+                    value=f"[@{username}](https://warpcast.com/{username})",
+                    inline=True
+                )
+
+            # Add market cap if available
+            if market_cap := token.get('starting_market_cap'):
+                embed.add_field(
+                    name="Market Cap Initial",
+                    value=f"${market_cap:,.2f}",
+                    inline=True
+                )
+
             await channel.send(embed=embed)
             logger.info(f"Sent notification for {chain_name} token at address {token['tokenAddress']}")
 
@@ -665,6 +692,14 @@ class ClankerMonitor(commands.Cog):
                 value=f"{platform} ({interface})",
                 inline=True
             )
+
+            # Add username with Warpcast link if available
+            if username and platform.lower() == "farcaster":
+                embed.add_field(
+                    name="Username",
+                    value=f"[@{username}](https://warpcast.com/{username})",
+                    inline=True
+                )
 
             # Add market cap if available
             if market_cap := token_data.get('starting_market_cap'):
