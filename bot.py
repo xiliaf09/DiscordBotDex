@@ -979,13 +979,23 @@ class ClankerMonitor(commands.Cog):
                 inline=True
             )
 
-            # Add FID if available
+            # Add FID if available and create Blacklist button
             if fid:
                 embed.add_field(
                     name="FID",
                     value=fid + (" 🥇" if is_premium else ""),
-                inline=True
-            )
+                    inline=True
+                )
+                # Create button view
+                view = discord.ui.View()
+                blacklist_button = discord.ui.Button(
+                    style=discord.ButtonStyle.danger,
+                    label="Blacklist",
+                    custom_id=f"blacklist_{fid}"
+                )
+                view.add_item(blacklist_button)
+            else:
+                view = None
 
             embed.add_field(
                 name="Contract",
@@ -1043,7 +1053,12 @@ class ClankerMonitor(commands.Cog):
                     inline=True
                 )
 
-            await channel.send(embed=embed)
+            # Send message with button if FID is available
+            if view:
+                await channel.send(embed=embed, view=view)
+            else:
+                await channel.send(embed=embed)
+
             logger.info(f"Clanker notification sent for token: {token_data.get('name')}")
 
             if contract_address:
@@ -1055,6 +1070,44 @@ class ClankerMonitor(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Handle button interactions."""
+        if not interaction.data:
+            return
+
+        try:
+            custom_id = interaction.data.get("custom_id", "")
+            if custom_id.startswith("blacklist_"):
+                # Extract FID from custom_id
+                fid = custom_id.split("_")[1]
+                
+                # Check if user has admin permissions
+                if not interaction.user.guild_permissions.administrator:
+                    await interaction.response.send_message("❌ Vous devez être administrateur pour utiliser cette fonction.", ephemeral=True)
+                    return
+
+                # Check if FID is already banned
+                if fid in self.banned_fids:
+                    await interaction.response.send_message(f"ℹ️ Le FID {fid} est déjà banni.", ephemeral=True)
+                    return
+
+                # Check if FID is whitelisted
+                if fid in self.whitelisted_fids:
+                    await interaction.response.send_message(f"⚠️ Le FID {fid} est whitelisté et ne peut pas être banni.", ephemeral=True)
+                    return
+
+                # Add FID to banlist
+                self.banned_fids.add(fid)
+                self._save_banned_fids()
+                
+                await interaction.response.send_message(f"✅ FID {fid} ajouté à la banlist avec succès.", ephemeral=True)
+                logger.info(f"FID {fid} banned via button interaction by {interaction.user}")
+
+        except Exception as e:
+            logger.error(f"Error handling button interaction: {e}")
+            await interaction.response.send_message("❌ Une erreur est survenue lors du traitement de votre demande.", ephemeral=True)
 
     @commands.command()
     async def setvolume(self, ctx, volume_usd: float):
