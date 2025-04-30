@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Set
 import time
 
@@ -510,6 +510,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
         embed.add_field(name="!fidcheck <contract>", value="Vérifie le FID associé à un contrat Clanker.", inline=False)
+        embed.add_field(name="!spamcheck", value="Liste les FIDs ayant déployé plus d'un token dans les dernières 24h.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -597,6 +598,113 @@ class ClankerMonitor(commands.Cog):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def spamcheck(self, ctx):
+        """Analyse les déploiements Clanker des dernières 24h pour identifier les spammeurs."""
+        try:
+            # Message initial
+            status_msg = await ctx.send("🔍 Analyse des déploiements Clanker des dernières 24h en cours...")
+
+            # Récupérer tous les tokens des dernières 24h
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(f"{CLANKER_API_URL}/tokens", params={"limit": 1000})
+                response.raise_for_status()
+                data = response.json()
+
+                if not isinstance(data, dict) or "data" not in data:
+                    await status_msg.edit(content="❌ Format de réponse invalide de l'API Clanker")
+                    return
+
+                tokens = data["data"]
+                
+                # Filtrer les tokens des dernières 24h
+                now = datetime.now(timezone.utc)
+                cutoff = now - timedelta(hours=24)
+                
+                # Compter les déploiements par FID
+                fid_counts = {}
+                fid_tokens = {}  # Pour stocker les détails des tokens par FID
+                
+                for token in tokens:
+                    # Vérifier la date de création
+                    created_at_str = token.get('created_at')
+                    if not created_at_str:
+                        continue
+                        
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        if created_at < cutoff:
+                            continue
+                            
+                        fid = str(token.get('requestor_fid'))
+                        if not fid:
+                            continue
+                            
+                        if fid not in fid_counts:
+                            fid_counts[fid] = 0
+                            fid_tokens[fid] = []
+                            
+                        fid_counts[fid] += 1
+                        fid_tokens[fid].append({
+                            'name': token.get('name', 'Unknown'),
+                            'symbol': token.get('symbol', 'Unknown'),
+                            'contract': token.get('contract_address', 'Unknown')
+                        })
+                            
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Error parsing date: {e}")
+                        continue
+
+                # Filtrer les FIDs avec plus d'un déploiement
+                spammers = {fid: count for fid, count in fid_counts.items() if count > 1}
+                
+                if not spammers:
+                    await status_msg.edit(content="✅ Aucun spammeur détecté dans les dernières 24h!")
+                    return
+
+                # Créer l'embed avec les résultats
+                embed = discord.Embed(
+                    title="🚨 Spammeurs de Clanker (24h)",
+                    description="Liste des FIDs ayant déployé plus d'un token dans les dernières 24h",
+                    color=discord.Color.red(),
+                    timestamp=now
+                )
+
+                # Trier par nombre de déploiements (du plus grand au plus petit)
+                sorted_spammers = sorted(spammers.items(), key=lambda x: x[1], reverse=True)
+
+                for fid, count in sorted_spammers:
+                    # Créer la liste des tokens pour ce FID
+                    token_list = []
+                    for token in fid_tokens[fid]:
+                        token_list.append(f"• {token['name']} ({token['symbol']})")
+                        if len(token_list[-1]) > 50:  # Tronquer si trop long
+                            token_list[-1] = token_list[-1][:47] + "..."
+
+                    tokens_text = "\n".join(token_list)
+                    if len(tokens_text) > 1024:  # Limite Discord pour un field
+                        tokens_text = tokens_text[:1021] + "..."
+
+                    embed.add_field(
+                        name=f"FID: {fid} ({count} tokens)",
+                        value=tokens_text,
+                        inline=False
+                    )
+
+                # Ajouter un footer avec des instructions
+                embed.set_footer(text="Utilisez !banfid <fid> pour bannir un FID spécifique")
+
+                await status_msg.delete()
+                await ctx.send(embed=embed)
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error during spam check: {e}")
+            await status_msg.edit(content="❌ Erreur lors de la requête à l'API Clanker")
+        except Exception as e:
+            logger.error(f"Error during spam check: {e}")
+            await status_msg.edit(content="❌ Une erreur est survenue lors de la vérification des spammeurs")
 
     @commands.command()
     async def fidcheck(self, ctx, contract_address: str):
