@@ -509,6 +509,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!banfid <fid>", value="Bannit un FID pour ne plus recevoir ses alertes de déploiement.", inline=False)
         embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
+        embed.add_field(name="!fidcheck <contract>", value="Vérifie le FID associé à un contrat Clanker.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -596,6 +597,92 @@ class ClankerMonitor(commands.Cog):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed)
+
+    @commands.command()
+    async def fidcheck(self, ctx, contract_address: str):
+        """Vérifie le FID associé à un contrat Clanker."""
+        try:
+            # Envoyer un message initial
+            status_msg = await ctx.send("🔍 Recherche du FID...")
+
+            # Faire la requête à l'API Clanker
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{CLANKER_API_URL}/tokens", params={"contract": contract_address})
+                response.raise_for_status()
+                data = response.json()
+
+                if not isinstance(data, dict) or "data" not in data or not data["data"]:
+                    await status_msg.edit(content=f"❌ Aucun token trouvé pour le contrat {contract_address}")
+                    return
+
+                token = data["data"][0]  # Prendre le premier résultat
+                social_context = token.get('social_context', {})
+                
+                # Log pour le débogage
+                logger.info(f"[FIDCHECK] Token data: {token}")
+                logger.info(f"[FIDCHECK] Social context: {social_context}")
+
+                # Créer un embed avec les informations
+                embed = discord.Embed(
+                    title="🔍 Informations FID",
+                    color=discord.Color.blue()
+                )
+
+                embed.add_field(
+                    name="Contract",
+                    value=f"`{contract_address}`",
+                    inline=False
+                )
+
+                # Ajouter le FID s'il existe
+                fid = social_context.get('fid')
+                if fid:
+                    embed.add_field(
+                        name="FID",
+                        value=str(fid),
+                        inline=True
+                    )
+                else:
+                    embed.add_field(
+                        name="FID",
+                        value="Non trouvé",
+                        inline=True
+                    )
+
+                # Ajouter d'autres informations utiles
+                platform = social_context.get('platform', 'Unknown')
+                interface = social_context.get('interface', 'Unknown')
+                username = social_context.get('username')
+
+                embed.add_field(
+                    name="Plateforme",
+                    value=platform,
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Interface",
+                    value=interface,
+                    inline=True
+                )
+
+                if username:
+                    embed.add_field(
+                        name="Username",
+                        value=username,
+                        inline=True
+                    )
+
+                # Supprimer le message de statut et envoyer l'embed
+                await status_msg.delete()
+                await ctx.send(embed=embed)
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error during FID check: {e}")
+            await status_msg.edit(content="❌ Erreur lors de la requête à l'API Clanker")
+        except Exception as e:
+            logger.error(f"Error during FID check: {e}")
+            await status_msg.edit(content="❌ Une erreur est survenue lors de la vérification du FID")
 
     @commands.command()
     async def clankeron(self, ctx):
