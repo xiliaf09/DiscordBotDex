@@ -1,96 +1,92 @@
-import sys
+import requests
 import json
-import httpx
+import sys
 from datetime import datetime
-from typing import Dict, List, Tuple
 
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
 
-def get_user_fid(username: str) -> int:
-    """Récupère le FID d'un utilisateur Warpcast à partir de son nom d'utilisateur."""
-    response = httpx.get(f"{WARPCAST_API_URL}/user-by-username?username={username}")
-    if response.status_code != 200:
-        raise Exception(f"Erreur lors de la récupération du FID pour {username}")
-    return response.json()["result"]["user"]["fid"]
-
-def get_following_fids(user_fid: int) -> List[Tuple[int, str, str]]:
-    """Récupère la liste des FIDs, noms d'utilisateur et noms d'affichage des comptes suivis."""
-    following = []
-    cursor = None
-    
-    while True:
-        url = f"{WARPCAST_API_URL}/following?fid={user_fid}&limit=100"
-        if cursor:
-            url += f"&cursor={cursor}"
-            
-        response = httpx.get(url)
-        if response.status_code != 200:
-            raise Exception("Erreur lors de la récupération des comptes suivis")
-            
-        data = response.json()
-        users = data["result"]["users"]
-        
-        for user in users:
-            following.append((user["fid"], user["username"], user["displayName"]))
-            
-        cursor = data["result"].get("next", {}).get("cursor")
-        if not cursor:
-            break
-            
-    return following
-
-def save_results(following: List[Tuple[int, str, str]], output_file: str, target_username: str, target_fid: int):
-    """Sauvegarde les résultats dans un fichier texte et un fichier JSON."""
-    # Sauvegarde des FIDs dans un fichier texte
-    with open(output_file, "w") as f:
-        for fid, _, _ in following:
-            f.write(f"{fid}\n")
-            
-    # Sauvegarde des métadonnées dans un fichier JSON
-    metadata = {
-        "target_username": target_username,
-        "target_fid": target_fid,
-        "total_fids": len(following),
-        "timestamp": datetime.now().isoformat(),
-        "details": [
-            {
-                "fid": fid,
-                "username": username,
-                "display_name": display_name
-            }
-            for fid, username, display_name in following
-        ]
-    }
-    
-    json_file = output_file.rsplit(".", 1)[0] + "_metadata.json"
-    with open(json_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
-
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: python warpcast_scraper.py <username> <output_file>")
-        sys.exit(1)
-        
-    username = sys.argv[1]
-    output_file = sys.argv[2]
-    
+def test_api_connection():
+    """Test the connection to the Warpcast API."""
     try:
-        print(f"Récupération du FID pour l'utilisateur {username}...")
-        target_fid = get_user_fid(username)
-        
-        print(f"Récupération des comptes suivis par {username} (FID: {target_fid})...")
-        following = get_following_fids(target_fid)
-        
-        print(f"\nNombre total de comptes suivis : {len(following)}")
-        save_results(following, output_file, username, target_fid)
-        
-        print(f"\nRésultats sauvegardés dans :")
-        print(f"- Liste des FIDs : {output_file}")
-        print(f"- Métadonnées : {output_file.rsplit('.', 1)[0]}_metadata.json")
-        
+        # Try to get a random user's profile as a test
+        response = requests.get(f"{WARPCAST_API_URL}/user?username=dwr")
+        if response.status_code == 200:
+            print("✅ Connection à l'API Warpcast réussie!")
+            return True
+        else:
+            print(f"❌ Erreur lors de la connexion à l'API. Code: {response.status_code}")
+            return False
     except Exception as e:
-        print(f"Erreur : {str(e)}")
-        sys.exit(1)
+        print(f"❌ Erreur lors de la connexion à l'API: {str(e)}")
+        return False
+
+def get_user_fid(username):
+    """Get the FID of a user by their username."""
+    try:
+        response = requests.get(f"{WARPCAST_API_URL}/user?username={username}")
+        if response.status_code == 200:
+            data = response.json()
+            return data['result']['user']['fid']
+        return None
+    except Exception:
+        return None
+
+def get_following_fids(username):
+    """Get the FIDs of all accounts followed by a user."""
+    user_fid = get_user_fid(username)
+    if not user_fid:
+        print(f"❌ Impossible de trouver l'utilisateur {username}")
+        return []
+
+    try:
+        response = requests.get(f"{WARPCAST_API_URL}/following?fid={user_fid}&limit=1000")
+        if response.status_code == 200:
+            data = response.json()
+            following = data['result']['users']
+            
+            # Extract FIDs and metadata
+            fids_data = []
+            for user in following:
+                fids_data.append({
+                    'fid': user['fid'],
+                    'username': user['username'],
+                    'displayName': user['displayName']
+                })
+            
+            # Save results
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Save just FIDs to a text file
+            with open(f'fids_{username}_{timestamp}.txt', 'w') as f:
+                for user in fids_data:
+                    f.write(f"{user['fid']}\n")
+            
+            # Save complete data to JSON
+            with open(f'fids_data_{username}_{timestamp}.json', 'w') as f:
+                json.dump({
+                    'source_user': username,
+                    'total_following': len(fids_data),
+                    'timestamp': timestamp,
+                    'users': fids_data
+                }, f, indent=2)
+            
+            print(f"✅ {len(fids_data)} FIDs extraits et sauvegardés!")
+            return fids_data
+            
+        print(f"❌ Erreur lors de la récupération des following. Code: {response.status_code}")
+        return []
+    except Exception as e:
+        print(f"❌ Erreur lors de la récupération des following: {str(e)}")
+        return []
 
 if __name__ == "__main__":
-    main() 
+    if len(sys.argv) < 2:
+        print("Usage: python warpcast_scraper.py <username|test>")
+        sys.exit(1)
+        
+    command = sys.argv[1]
+    
+    if command == "test":
+        test_api_connection()
+    else:
+        get_following_fids(command) 
