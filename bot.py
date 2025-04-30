@@ -555,16 +555,23 @@ class ClankerMonitor(commands.Cog):
             if os.path.exists(BANNED_FIDS_FILE):
                 with open(BANNED_FIDS_FILE, 'r') as f:
                     return set(json.load(f))
+            # Si le fichier n'existe pas, le créer avec un ensemble vide
+            self._save_banned_fids(set())
             return set()
         except Exception as e:
             logger.error(f"Error loading banned FIDs: {e}")
             return set()
 
-    def _save_banned_fids(self):
+    def _save_banned_fids(self, fids: Set[str] = None):
         """Save banned FIDs to file."""
         try:
+            # Si aucun ensemble n'est fourni, utiliser l'ensemble actuel
+            fids_to_save = list(fids if fids is not None else self.banned_fids)
+            # Créer le répertoire parent si nécessaire
+            os.makedirs(os.path.dirname(BANNED_FIDS_FILE), exist_ok=True)
             with open(BANNED_FIDS_FILE, 'w') as f:
-                json.dump(list(self.banned_fids), f)
+                json.dump(fids_to_save, f, indent=2)
+            logger.info(f"Successfully saved {len(fids_to_save)} banned FIDs to {BANNED_FIDS_FILE}")
         except Exception as e:
             logger.error(f"Error saving banned FIDs: {e}")
 
@@ -574,16 +581,23 @@ class ClankerMonitor(commands.Cog):
             if os.path.exists(WHITELISTED_FIDS_FILE):
                 with open(WHITELISTED_FIDS_FILE, 'r') as f:
                     return set(json.load(f))
+            # Si le fichier n'existe pas, le créer avec un ensemble vide
+            self._save_whitelisted_fids(set())
             return set()
         except Exception as e:
             logger.error(f"Error loading whitelisted FIDs: {e}")
             return set()
 
-    def _save_whitelisted_fids(self):
+    def _save_whitelisted_fids(self, fids: Set[str] = None):
         """Save whitelisted FIDs to file."""
         try:
+            # Si aucun ensemble n'est fourni, utiliser l'ensemble actuel
+            fids_to_save = list(fids if fids is not None else self.whitelisted_fids)
+            # Créer le répertoire parent si nécessaire
+            os.makedirs(os.path.dirname(WHITELISTED_FIDS_FILE), exist_ok=True)
             with open(WHITELISTED_FIDS_FILE, 'w') as f:
-                json.dump(list(self.whitelisted_fids), f)
+                json.dump(fids_to_save, f, indent=2)
+            logger.info(f"Successfully saved {len(fids_to_save)} whitelisted FIDs to {WHITELISTED_FIDS_FILE}")
         except Exception as e:
             logger.error(f"Error saving whitelisted FIDs: {e}")
 
@@ -596,7 +610,7 @@ class ClankerMonitor(commands.Cog):
             return
             
         self.banned_fids.add(fid)
-        self._save_banned_fids()
+        self._save_banned_fids()  # Sauvegarder immédiatement après modification
         await ctx.send(f"✅ FID {fid} banni avec succès. Vous ne recevrez plus d'alertes de ce compte.")
 
     @commands.command()
@@ -605,7 +619,7 @@ class ClankerMonitor(commands.Cog):
         """Débannir un FID pour recevoir à nouveau ses alertes de déploiement."""
         if fid in self.banned_fids:
             self.banned_fids.remove(fid)
-            self._save_banned_fids()
+            self._save_banned_fids()  # Sauvegarder immédiatement après modification
             await ctx.send(f"✅ FID {fid} débanni avec succès. Vous recevrez à nouveau les alertes de ce compte.")
         else:
             await ctx.send("❌ Ce FID n'est pas banni.")
@@ -1190,33 +1204,6 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
         await ctx.send(embed=embed)
-
-    @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def whitelist(self, ctx, fid: str):
-        """Ajouter un FID à la whitelist."""
-        if not fid.isdigit():
-            await ctx.send("❌ Le FID doit être un nombre.")
-            return
-
-        if fid in self.banned_fids:
-            await ctx.send("❌ Ce FID est banni. Veuillez d'abord le débannir avec !unbanfid.")
-            return
-
-        self.whitelisted_fids.add(fid)
-        self._save_whitelisted_fids()
-        await ctx.send(f"✅ FID {fid} ajouté à la whitelist avec succès.")
-
-    @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def removewhitelist(self, ctx, fid: str):
-        """Retirer un FID de la whitelist."""
-        if fid in self.whitelisted_fids:
-            self.whitelisted_fids.remove(fid)
-            self._save_whitelisted_fids()
-            await ctx.send(f"✅ FID {fid} retiré de la whitelist avec succès.")
-        else:
-            await ctx.send("❌ Ce FID n'est pas dans la whitelist.")
 
     @commands.command()
     async def checkwhitelist(self, ctx):

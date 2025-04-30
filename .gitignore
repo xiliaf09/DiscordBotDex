@@ -27,6 +27,8 @@ var/
 *.log
 logs/
 seen_tokens.json
+whitelisted_fids.json
+banned_fids.json
 
 # IDE
 .vscode/
