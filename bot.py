@@ -36,6 +36,7 @@ DEXSCREENER_API_URL = "https://api.dexscreener.com/token-profiles/latest/v1"
 TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 CLANKER_API_URL = "https://www.clanker.world/api"
 BASESCAN_API_URL = "https://api.basescan.org/api"
+WARPCAST_API_URL = "https://client.warpcast.com/v2"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -515,6 +516,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
         embed.add_field(name="!removewhitelist <fid>", value="Retire un FID de la whitelist.", inline=False)
         embed.add_field(name="!checkwhitelist", value="Affiche la liste des FIDs whitelistés.", inline=False)
+        embed.add_field(name="!importfollowing <username>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -523,7 +525,7 @@ class ClankerMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.is_active = True
-        self.tracked_clanker_tokens = {}  # contract_address: {'first_seen': timestamp, 'alerted': False}
+        self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
@@ -1229,6 +1231,100 @@ class ClankerMonitor(commands.Cog):
             color=discord.Color.gold()
         )
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def importfollowing(self, ctx, username: str):
+        """Importe les FIDs des comptes suivis par un utilisateur Warpcast."""
+        try:
+            status_msg = await ctx.send(f"🔍 Recherche des comptes suivis par @{username}...")
+
+            # Première requête pour obtenir le FID de l'utilisateur cible
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{WARPCAST_API_URL}/user-search",
+                    params={"q": username}
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get("result", {}).get("users"):
+                    await status_msg.edit(content=f"❌ Utilisateur @{username} non trouvé sur Warpcast.")
+                    return
+
+                target_user = data["result"]["users"][0]
+                target_fid = target_user.get("fid")
+
+                if not target_fid:
+                    await status_msg.edit(content=f"❌ Impossible de trouver le FID de @{username}.")
+                    return
+
+                # Deuxième requête pour obtenir la liste des comptes suivis
+                response = await client.get(
+                    f"{WARPCAST_API_URL}/following",
+                    params={"fid": target_fid}
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                if "result" not in data:
+                    await status_msg.edit(content="❌ Erreur lors de la récupération des comptes suivis.")
+                    return
+
+                following = data["result"].get("users", [])
+                
+                if not following:
+                    await status_msg.edit(content=f"❌ @{username} ne suit aucun compte.")
+                    return
+
+                # Créer un embed avec la liste des comptes trouvés
+                embed = discord.Embed(
+                    title=f"👥 Comptes suivis par @{username}",
+                    description="Voici les FIDs des comptes suivis. Utilisez !whitelist <fid> pour les ajouter à la whitelist.",
+                    color=discord.Color.blue()
+                )
+
+                # Grouper les comptes par paquets de 20 pour respecter la limite de Discord
+                chunks = [following[i:i + 20] for i in range(0, len(following), 20)]
+                
+                for i, chunk in enumerate(chunks):
+                    field_text = ""
+                    for user in chunk:
+                        fid = user.get("fid")
+                        display_name = user.get("displayName", "Unknown")
+                        username = user.get("username", "Unknown")
+                        
+                        # Marquer si déjà whitelisté
+                        status = "🥇" if str(fid) in self.whitelisted_fids else "⭐"
+                        field_text += f"{status} **FID:** {fid} - @{username} ({display_name})\n"
+                    
+                    embed.add_field(
+                        name=f"Liste {i+1}/{len(chunks)}",
+                        value=field_text or "Aucun compte trouvé",
+                        inline=False
+                    )
+
+                # Ajouter un résumé
+                total_following = len(following)
+                already_whitelisted = sum(1 for user in following if str(user.get("fid", "")) in self.whitelisted_fids)
+                
+                embed.add_field(
+                    name="Résumé",
+                    value=f"Total: {total_following} comptes\nDéjà whitelistés: {already_whitelisted}\nNon whitelistés: {total_following - already_whitelisted}",
+                    inline=False
+                )
+
+                embed.set_footer(text="🥇 = Déjà whitelisté | ⭐ = Non whitelisté")
+
+                await status_msg.delete()
+                await ctx.send(embed=embed)
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error during following import: {e}")
+            await status_msg.edit(content="❌ Erreur lors de la connexion à l'API Warpcast")
+        except Exception as e:
+            logger.error(f"Error during following import: {e}")
+            await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation")
 
 class Bot(commands.Bot):
     def __init__(self):
