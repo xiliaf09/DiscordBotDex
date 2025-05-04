@@ -994,6 +994,14 @@ class ClankerMonitor(commands.Cog):
                     custom_id=f"blacklist_{fid}"
                 )
                 view.add_item(blacklist_button)
+                # Ajout du bouton Remove Whitelist si premium
+                if is_premium:
+                    remove_whitelist_button = discord.ui.Button(
+                        style=discord.ButtonStyle.secondary,
+                        label="Remove Whitelist",
+                        custom_id=f"removewhitelist_{fid}"
+                    )
+                    view.add_item(remove_whitelist_button)
             else:
                 view = None
 
@@ -1104,6 +1112,19 @@ class ClankerMonitor(commands.Cog):
                 
                 await interaction.response.send_message(f"✅ FID {fid} ajouté à la banlist avec succès.", ephemeral=True)
                 logger.info(f"FID {fid} banned via button interaction by {interaction.user}")
+            elif custom_id.startswith("removewhitelist_"):
+                fid = custom_id.split("_")[1]
+                # Check if user has admin permissions
+                if not interaction.user.guild_permissions.administrator:
+                    await interaction.response.send_message("❌ Vous devez être administrateur pour utiliser cette fonction.", ephemeral=True)
+                    return
+                if fid not in self.whitelisted_fids:
+                    await interaction.response.send_message(f"❌ Le FID {fid} n'est pas dans la whitelist.", ephemeral=True)
+                    return
+                self.whitelisted_fids.remove(fid)
+                self._save_whitelisted_fids()
+                await interaction.response.send_message(f"✅ FID {fid} retiré de la whitelist avec succès.", ephemeral=True)
+                logger.info(f"FID {fid} removed from whitelist via button interaction by {interaction.user}")
 
         except Exception as e:
             logger.error(f"Error handling button interaction: {e}")
