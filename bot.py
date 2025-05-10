@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Set
 import time
+import sys
 
 import discord
 from discord.ext import tasks, commands
@@ -1792,6 +1793,34 @@ class Bot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents, help_command=None)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def restart(self, ctx):
+        """Redémarre le bot de manière sécurisée."""
+        try:
+            # Envoyer un message de confirmation
+            await ctx.send("🔄 Redémarrage du bot en cours...")
+            
+            # Arrêter toutes les tâches en cours
+            for cog in self.cogs.values():
+                for task in cog.__dict__.values():
+                    if isinstance(task, tasks.Loop):
+                        task.cancel()
+            
+            # Attendre un court instant pour s'assurer que les tâches sont bien arrêtées
+            await asyncio.sleep(1)
+            
+            # Redémarrer le bot
+            await self.close()
+            
+            # Redémarrer le processus Python
+            python = sys.executable
+            os.execl(python, python, *sys.argv)
+            
+        except Exception as e:
+            logger.error(f"Error during bot restart: {e}")
+            await ctx.send("❌ Une erreur est survenue lors du redémarrage du bot.")
 
     async def setup_hook(self):
         """Initialize the bot's cogs and start monitoring tasks."""
