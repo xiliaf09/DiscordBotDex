@@ -1198,7 +1198,22 @@ class ClankerMonitor(commands.Cog):
                         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
                         embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
                         embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
-                        await self.channel.send(embed=embed)
+                        # Ajout du bouton Photon si pool address
+                        view = None
+                        pool_address = pair.get('pairAddress') or pair.get('poolAddress') or pair.get('liquidity', {}).get('address')
+                        if pool_address:
+                            photon_url = f"https://photon-base.tinyastro.io/en/lp/{pool_address}"
+                            view = discord.ui.View()
+                            photon_button = discord.ui.Button(
+                                style=discord.ButtonStyle.primary,
+                                label="Voir sur Photon",
+                                url=photon_url
+                            )
+                            view.add_item(photon_button)
+                        if view:
+                            await self.channel.send(embed=embed, view=view)
+                        else:
+                            await self.channel.send(embed=embed)
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
             except Exception as e:
                 logger.error(f"Erreur lors de la vérification du volume Dexscreener pour {contract_address}: {e}")
