@@ -358,7 +358,20 @@ class TokenMonitor(commands.Cog):
                     inline=True
                 )
 
-            await channel.send(embed=embed)
+            # Create view with buttons
+            view = discord.ui.View()
+            
+            # Add Photon button if pool address is available
+            if token.get('pool_address'):
+                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token['pool_address']}"
+                photon_button = discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Voir sur Photon",
+                    url=photon_url
+                )
+                view.add_item(photon_button)
+
+            await channel.send(embed=embed, view=view)
             logger.info(f"Sent notification for {chain_name} token at address {token['tokenAddress']}")
 
         except Exception as e:
