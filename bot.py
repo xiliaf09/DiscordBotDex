@@ -1032,6 +1032,16 @@ class ClankerMonitor(commands.Cog):
                     value=f"`{token_data['pool_address']}`",
                     inline=False
                 )
+                # Ajout du bouton Photon
+                if view is None:
+                    view = discord.ui.View()
+                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token_data['pool_address']}"
+                photon_button = discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Voir sur Photon",
+                    url=photon_url
+                )
+                view.add_item(photon_button)
 
             # Add deployment tweet/cast link
             embed.add_field(
@@ -1075,7 +1085,7 @@ class ClankerMonitor(commands.Cog):
                     inline=True
                 )
 
-            # Send message with button if FID is available
+            # Send message with button if FID is available or Photon button exists
             if view:
                 await channel.send(embed=embed, view=view)
             else:
