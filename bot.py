@@ -38,6 +38,7 @@ TRUTH_SOCIAL_RSS_URL = "https://truthsocial.com/users/realDonaldTrump/feed.rss"
 CLANKER_API_URL = "https://www.clanker.world/api"
 BASESCAN_API_URL = "https://api.basescan.org/api"
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
+ROUTER_ADDRESS = "0x327df1e6de05895d2ab08513aadd9313fe505d86"
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
