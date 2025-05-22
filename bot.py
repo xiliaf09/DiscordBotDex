@@ -544,7 +544,8 @@ class ClankerMonitor(commands.Cog):
         self.channel = None
         self.is_active = True
         self.premium_only = False
-        self.bankr_enabled = True  # Nouvelle variable pour les alertes Bankr
+        self.bankr_enabled = True
+        self.img_required = False  # Nouvelle variable pour le filtre d'image
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
         
@@ -952,6 +953,11 @@ class ClankerMonitor(commands.Cog):
             # Vérifier si c'est un token Bankr et si les alertes Bankr sont désactivées
             if platform == "Unknown" and interface == "Bankr" and not self.bankr_enabled:
                 logger.info(f"Skipping Bankr token as Bankr alerts are disabled: {token_data.get('name')}")
+                return
+
+            # Vérifier si le filtre d'image est activé et si le token n'a pas d'image
+            if self.img_required and not token_data.get('img_url'):
+                logger.info(f"Skipping token without image as image filter is enabled: {token_data.get('name')}")
                 return
 
             # On ne garde que farcaster (clanker) OU Unknown (Bankr)
@@ -1861,6 +1867,18 @@ class ClankerMonitor(commands.Cog):
         """Désactive les alertes pour les tokens déployés via Bankr"""
         self.bankr_enabled = False
         await ctx.send("❌ Alertes Bankr désactivées")
+
+    @commands.command()
+    async def imgon(self, ctx):
+        """Active le filtre pour n'afficher que les tokens avec une image"""
+        self.img_required = True
+        await ctx.send("🖼️ Filtre image activé - Seuls les tokens avec une image seront affichés")
+
+    @commands.command()
+    async def imgoff(self, ctx):
+        """Désactive le filtre d'image"""
+        self.img_required = False
+        await ctx.send("✅ Filtre image désactivé - Tous les tokens seront affichés")
 
 class Bot(commands.Bot):
     def __init__(self):
