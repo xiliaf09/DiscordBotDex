@@ -543,6 +543,7 @@ class ClankerMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.is_active = True
+        self.premium_only = False  # Nouvelle variable pour le mode premium
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
         
@@ -936,6 +937,11 @@ class ClankerMonitor(commands.Cog):
 
             # Vérifier si le FID est whitelisté
             is_premium = fid and fid in self.whitelisted_fids
+
+            # Si le mode premium est activé et que le token n'est pas premium, on ne l'affiche pas
+            if self.premium_only and not is_premium:
+                logger.info(f"Skipping non-premium token in premium-only mode: {token_data.get('name')}")
+                return
 
             # Filtrage selon la méthode de déploiement
             platform = social_context.get('platform', 'Unknown')
@@ -1825,6 +1831,18 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error importing banlist: {e}")
             await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation des fichiers.")
+
+    @commands.command()
+    async def premiumonly(self, ctx):
+        """Active le mode premium uniquement pour les alertes Clanker"""
+        self.premium_only = True
+        await ctx.send("🥇 Mode premium activé - Seules les alertes des tokens premium seront affichées")
+
+    @commands.command()
+    async def premiumonlyoff(self, ctx):
+        """Désactive le mode premium uniquement pour les alertes Clanker"""
+        self.premium_only = False
+        await ctx.send("✅ Mode premium désactivé - Toutes les alertes seront affichées")
 
 class Bot(commands.Bot):
     def __init__(self):
