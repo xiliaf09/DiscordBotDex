@@ -543,7 +543,8 @@ class ClankerMonitor(commands.Cog):
         self.seen_tokens: Set[str] = self._load_seen_tokens()
         self.channel = None
         self.is_active = True
-        self.premium_only = False  # Nouvelle variable pour le mode premium
+        self.premium_only = False
+        self.bankr_enabled = True  # Nouvelle variable pour les alertes Bankr
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
         
@@ -947,6 +948,11 @@ class ClankerMonitor(commands.Cog):
             platform = social_context.get('platform', 'Unknown')
             interface = social_context.get('interface', 'Unknown')
             username = social_context.get('username')
+
+            # Vérifier si c'est un token Bankr et si les alertes Bankr sont désactivées
+            if platform == "Unknown" and interface == "Bankr" and not self.bankr_enabled:
+                logger.info(f"Skipping Bankr token as Bankr alerts are disabled: {token_data.get('name')}")
+                return
 
             # On ne garde que farcaster (clanker) OU Unknown (Bankr)
             if not (
@@ -1843,6 +1849,18 @@ class ClankerMonitor(commands.Cog):
         """Désactive le mode premium uniquement pour les alertes Clanker"""
         self.premium_only = False
         await ctx.send("✅ Mode premium désactivé - Toutes les alertes seront affichées")
+
+    @commands.command()
+    async def bankron(self, ctx):
+        """Active les alertes pour les tokens déployés via Bankr"""
+        self.bankr_enabled = True
+        await ctx.send("✅ Alertes Bankr activées")
+
+    @commands.command()
+    async def bankroff(self, ctx):
+        """Désactive les alertes pour les tokens déployés via Bankr"""
+        self.bankr_enabled = False
+        await ctx.send("❌ Alertes Bankr désactivées")
 
 class Bot(commands.Bot):
     def __init__(self):
