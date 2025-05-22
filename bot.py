@@ -956,7 +956,8 @@ class ClankerMonitor(commands.Cog):
                 return
 
             # Vérifier si le filtre d'image est activé et si le token n'a pas d'image
-            if self.img_required and not token_data.get('img_url'):
+            # On ignore le filtre d'image si le token est premium
+            if self.img_required and not is_premium and not token_data.get('img_url'):
                 logger.info(f"Skipping token without image as image filter is enabled: {token_data.get('name')}")
                 return
 
