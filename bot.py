@@ -68,25 +68,35 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Uniswap V3 Router ABI (minimal)
-UNISWAP_ROUTER_ABI = [
+# Remplace l'ABI du router Uniswap V3
+UNISWAP_V3_ROUTER_ABI = [
     {
         "inputs": [
-            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
-            {"internalType": "uint256", "name": "amountOutMin", "type": "uint256"},
-            {"internalType": "address[]", "name": "path", "type": "address[]"},
-            {"internalType": "address", "name": "to", "type": "address"},
-            {"internalType": "uint256", "name": "deadline", "type": "uint256"}
+            {
+                "components": [
+                    {"internalType": "address", "name": "tokenIn", "type": "address"},
+                    {"internalType": "address", "name": "tokenOut", "type": "address"},
+                    {"internalType": "uint24", "name": "fee", "type": "uint24"},
+                    {"internalType": "address", "name": "recipient", "type": "address"},
+                    {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+                    {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+                    {"internalType": "uint256", "name": "amountOutMinimum", "type": "uint256"},
+                    {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"}
+                ],
+                "internalType": "struct ISwapRouter.ExactInputSingleParams",
+                "name": "params",
+                "type": "tuple"
+            }
         ],
-        "name": "swapExactETHForTokens",
-        "outputs": [{"internalType": "uint256[]", "name": "amounts", "type": "uint256[]"}],
+        "name": "exactInputSingle",
+        "outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],
         "stateMutability": "payable",
         "type": "function"
     }
 ]
 
-# Initialize Uniswap router contract
-router = w3.eth.contract(address=config.UNISWAP_V3_ROUTER, abi=UNISWAP_ROUTER_ABI)
+# Réinitialise le router avec la bonne ABI
+router = w3.eth.contract(address=config.UNISWAP_V3_ROUTER, abi=UNISWAP_V3_ROUTER_ABI)
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -2024,72 +2034,67 @@ class SnipeMonitor(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def buy(self, ctx, token_address: str, amount: float):
-        """Achete un token via Uniswap V3."""
+        """Achete un token via Uniswap V3 (exactInputSingle)."""
         if amount <= 0:
             await ctx.send("❌ Le montant doit être supérieur à 0.")
             return
 
         try:
-            # Préparer la transaction
             amount_wei = w3.to_wei(amount, 'ether')
-            deadline = w3.eth.get_block('latest').timestamp + 300  # 5 minutes
-
-            # Construire la transaction
-            tx = router.functions.swapExactETHForTokens(
-                0,  # amountOutMin (set to 0 for testing)
-                [config.WETH_ADDRESS, token_address],
-                config.WALLET_ADDRESS,
-                deadline
-            ).build_transaction({
+            deadline = int(time.time()) + 300
+            params = {
+                'tokenIn': config.WETH_ADDRESS,
+                'tokenOut': token_address,
+                'fee': 3000,  # 0.3% pool
+                'recipient': config.WALLET_ADDRESS,
+                'deadline': deadline,
+                'amountIn': amount_wei,
+                'amountOutMinimum': 0,  # à ajuster pour le slippage
+                'sqrtPriceLimitX96': 0
+            }
+            tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
                 'value': amount_wei,
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
             })
-
-            # Signer et envoyer la transaction
             signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-            # Envoyer la confirmation
             embed = discord.Embed(
                 title="🔄 Transaction Envoyée",
                 description=f"Hash: {tx_hash.hex()}\nMontant: {amount} ETH",
                 color=discord.Color.blue()
             )
             await ctx.send(embed=embed)
-
         except Exception as e:
             logger.error(f"Error during buy: {e}")
             await ctx.send(f"❌ Erreur lors de l'achat: {str(e)}")
 
     async def execute_snipe(self, token_address: str, amount: float):
-        """Exécute un snipe pour un token."""
+        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle)."""
         try:
-            # Préparer la transaction
             amount_wei = w3.to_wei(amount, 'ether')
-            deadline = w3.eth.get_block('latest').timestamp + 300  # 5 minutes
-
-            # Construire la transaction
-            tx = router.functions.swapExactETHForTokens(
-                0,  # amountOutMin (set to 0 for testing)
-                [config.WETH_ADDRESS, token_address],
-                config.WALLET_ADDRESS,
-                deadline
-            ).build_transaction({
+            deadline = int(time.time()) + 300
+            params = {
+                'tokenIn': config.WETH_ADDRESS,
+                'tokenOut': token_address,
+                'fee': 3000,  # 0.3% pool
+                'recipient': config.WALLET_ADDRESS,
+                'deadline': deadline,
+                'amountIn': amount_wei,
+                'amountOutMinimum': 0,  # à ajuster pour le slippage
+                'sqrtPriceLimitX96': 0
+            }
+            tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
                 'value': amount_wei,
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
             })
-
-            # Signer et envoyer la transaction
             signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-            # Envoyer la confirmation
             if self.channel:
                 embed = discord.Embed(
                     title="🎯 Snipe Exécuté",
@@ -2098,9 +2103,7 @@ class SnipeMonitor(commands.Cog):
                 )
                 embed.add_field(name="Hash", value=tx_hash.hex(), inline=False)
                 await self.channel.send(embed=embed)
-
             return True
-
         except Exception as e:
             logger.error(f"Error executing snipe: {e}")
             if self.channel:
