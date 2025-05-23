@@ -1945,6 +1945,134 @@ class ClankerMonitor(commands.Cog):
         self.img_required = False
         await ctx.send("✅ Filtre image désactivé - Tous les tokens seront affichés")
 
+    async def ensure_weth(self, amount_wei):
+        """Wrap de l'ETH en WETH si le solde WETH est insuffisant."""
+        weth_balance = w3.eth.get_balance(config.WETH_ADDRESS)
+        if weth_balance < amount_wei:
+            tx = weth.functions.deposit().build_transaction({
+                'from': config.WALLET_ADDRESS,
+                'value': amount_wei,
+                'gas': 60000,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            logger.info(f"ETH wrapped to WETH, tx: {tx_hash.hex()}")
+            return tx_hash.hex()
+        return None
+
+    async def ensure_approve(self, amount_wei):
+        """Approve le routeur Uniswap V3 pour le WETH si besoin."""
+        allowance = weth.functions.allowance(config.WALLET_ADDRESS, config.UNISWAP_V3_ROUTER).call()
+        if allowance < amount_wei:
+            tx = weth.functions.approve(config.UNISWAP_V3_ROUTER, 2**256-1).build_transaction({
+                'from': config.WALLET_ADDRESS,
+                'gas': 60000,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            logger.info(f"Approve WETH for router, tx: {tx_hash.hex()}")
+            return tx_hash.hex()
+        return None
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def buy(self, ctx, token_address: str, amount: float):
+        """Achete un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
+        if amount <= 0:
+            await ctx.send("❌ Le montant doit être supérieur à 0.")
+            return
+        try:
+            amount_wei = w3.to_wei(amount, 'ether')
+            # 1. Wrap ETH en WETH si besoin
+            tx_hash_wrap = await self.ensure_weth(amount_wei)
+            if tx_hash_wrap:
+                await ctx.send(f"ETH wrap en WETH envoyé ! Hash: {tx_hash_wrap}. Attends la confirmation avant de swap.")
+                # Optionnel : attendre la confirmation du wrap avant de continuer
+            # 2. Approve le routeur si besoin
+            tx_hash_approve = await self.ensure_approve(amount_wei)
+            if tx_hash_approve:
+                await ctx.send(f"Approve WETH envoyé ! Hash: {tx_hash_approve}. Attends la confirmation avant de swap.")
+                # Optionnel : attendre la confirmation de l'approve
+            # 3. Swap WETH -> token
+            deadline = int(time.time()) + 300
+            params = {
+                'tokenIn': config.WETH_ADDRESS,
+                'tokenOut': token_address,
+                'fee': 3000,  # 0.3% pool
+                'recipient': config.WALLET_ADDRESS,
+                'deadline': deadline,
+                'amountIn': amount_wei,
+                'amountOutMinimum': 0,  # à ajuster pour le slippage
+                'sqrtPriceLimitX96': 0
+            }
+            tx = router.functions.exactInputSingle(params).build_transaction({
+                'from': config.WALLET_ADDRESS,
+                'gas': config.GAS_LIMIT,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            embed = discord.Embed(
+                title="🔄 Transaction Envoyée",
+                description=f"Hash: {tx_hash.hex()}\nMontant: {amount} WETH",
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Error during buy: {e}")
+            await ctx.send(f"❌ Erreur lors de l'achat: {str(e)}")
+
+    async def execute_snipe(self, token_address: str, amount: float):
+        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
+        try:
+            amount_wei = w3.to_wei(amount, 'ether')
+            await self.ensure_weth(amount_wei)
+            await self.ensure_approve(amount_wei)
+            deadline = int(time.time()) + 300
+            params = {
+                'tokenIn': config.WETH_ADDRESS,
+                'tokenOut': token_address,
+                'fee': 3000,  # 0.3% pool
+                'recipient': config.WALLET_ADDRESS,
+                'deadline': deadline,
+                'amountIn': amount_wei,
+                'amountOutMinimum': 0,  # à ajuster pour le slippage
+                'sqrtPriceLimitX96': 0
+            }
+            tx = router.functions.exactInputSingle(params).build_transaction({
+                'from': config.WALLET_ADDRESS,
+                'gas': config.GAS_LIMIT,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            if self.channel:
+                embed = discord.Embed(
+                    title="🎯 Snipe Exécuté",
+                    description=f"Token: {token_address}\nMontant: {amount} WETH",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="Hash", value=tx_hash.hex(), inline=False)
+                await self.channel.send(embed=embed)
+            return True
+        except Exception as e:
+            logger.error(f"Error executing snipe: {e}")
+            if self.channel:
+                embed = discord.Embed(
+                    title="❌ Erreur de Snipe",
+                    description=f"Token: {token_address}\nMontant: {amount} WETH",
+                    color=discord.Color.red()
+                )
+                embed.add_field(name="Erreur", value=str(e), inline=False)
+                await self.channel.send(embed=embed)
+            return False
+
 class SnipeMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -2052,12 +2180,23 @@ class SnipeMonitor(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def buy(self, ctx, token_address: str, amount: float):
-        """Achete un token via Uniswap V3 (exactInputSingle) en envoyant de l'ETH natif."""
+        """Achete un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
         if amount <= 0:
             await ctx.send("❌ Le montant doit être supérieur à 0.")
             return
         try:
             amount_wei = w3.to_wei(amount, 'ether')
+            # 1. Wrap ETH en WETH si besoin
+            tx_hash_wrap = await self.ensure_weth(amount_wei)
+            if tx_hash_wrap:
+                await ctx.send(f"ETH wrap en WETH envoyé ! Hash: {tx_hash_wrap}. Attends la confirmation avant de swap.")
+                # Optionnel : attendre la confirmation du wrap avant de continuer
+            # 2. Approve le routeur si besoin
+            tx_hash_approve = await self.ensure_approve(amount_wei)
+            if tx_hash_approve:
+                await ctx.send(f"Approve WETH envoyé ! Hash: {tx_hash_approve}. Attends la confirmation avant de swap.")
+                # Optionnel : attendre la confirmation de l'approve
+            # 3. Swap WETH -> token
             deadline = int(time.time()) + 300
             params = {
                 'tokenIn': config.WETH_ADDRESS,
@@ -2071,7 +2210,6 @@ class SnipeMonitor(commands.Cog):
             }
             tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
-                'value': amount_wei,  # ETH natif envoyé
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
@@ -2080,7 +2218,7 @@ class SnipeMonitor(commands.Cog):
             tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
             embed = discord.Embed(
                 title="🔄 Transaction Envoyée",
-                description=f"Hash: {tx_hash.hex()}\nMontant: {amount} ETH",
+                description=f"Hash: {tx_hash.hex()}\nMontant: {amount} WETH",
                 color=discord.Color.blue()
             )
             await ctx.send(embed=embed)
@@ -2089,9 +2227,11 @@ class SnipeMonitor(commands.Cog):
             await ctx.send(f"❌ Erreur lors de l'achat: {str(e)}")
 
     async def execute_snipe(self, token_address: str, amount: float):
-        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle) en envoyant de l'ETH natif."""
+        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
         try:
             amount_wei = w3.to_wei(amount, 'ether')
+            await self.ensure_weth(amount_wei)
+            await self.ensure_approve(amount_wei)
             deadline = int(time.time()) + 300
             params = {
                 'tokenIn': config.WETH_ADDRESS,
@@ -2105,7 +2245,6 @@ class SnipeMonitor(commands.Cog):
             }
             tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
-                'value': amount_wei,  # ETH natif envoyé
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
@@ -2115,7 +2254,7 @@ class SnipeMonitor(commands.Cog):
             if self.channel:
                 embed = discord.Embed(
                     title="🎯 Snipe Exécuté",
-                    description=f"Token: {token_address}\nMontant: {amount} ETH",
+                    description=f"Token: {token_address}\nMontant: {amount} WETH",
                     color=discord.Color.green()
                 )
                 embed.add_field(name="Hash", value=tx_hash.hex(), inline=False)
@@ -2126,7 +2265,7 @@ class SnipeMonitor(commands.Cog):
             if self.channel:
                 embed = discord.Embed(
                     title="❌ Erreur de Snipe",
-                    description=f"Token: {token_address}\nMontant: {amount} ETH",
+                    description=f"Token: {token_address}\nMontant: {amount} WETH",
                     color=discord.Color.red()
                 )
                 embed.add_field(name="Erreur", value=str(e), inline=False)
