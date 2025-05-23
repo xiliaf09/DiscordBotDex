@@ -9,4 +9,5 @@ eth-typing==4.0.0
 eth-utils==2.3.1
 pydantic==2.5.2
 python-dateutil==2.8.2
-pytz==2023.3 
+pytz==2023.3
+httpx==0.27.0 
