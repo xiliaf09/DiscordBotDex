@@ -98,6 +98,24 @@ UNISWAP_V3_ROUTER_ABI = [
 # Réinitialise le router avec la bonne ABI
 router = w3.eth.contract(address=config.UNISWAP_V3_ROUTER, abi=UNISWAP_V3_ROUTER_ABI)
 
+# Ajoute l'ABI minimale pour WETH (approve)
+WETH_ABI = [
+    {
+        "constant": False,
+        "inputs": [
+            {"name": "_spender", "type": "address"},
+            {"name": "_value", "type": "uint256"}
+        ],
+        "name": "approve",
+        "outputs": [
+            {"name": "", "type": "bool"}
+        ],
+        "type": "function"
+    }
+]
+
+weth = w3.eth.contract(address=config.WETH_ADDRESS, abi=WETH_ABI)
+
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -2034,11 +2052,10 @@ class SnipeMonitor(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def buy(self, ctx, token_address: str, amount: float):
-        """Achete un token via Uniswap V3 (exactInputSingle)."""
+        """Achete un token via Uniswap V3 (exactInputSingle) en envoyant de l'ETH natif."""
         if amount <= 0:
             await ctx.send("❌ Le montant doit être supérieur à 0.")
             return
-
         try:
             amount_wei = w3.to_wei(amount, 'ether')
             deadline = int(time.time()) + 300
@@ -2054,7 +2071,7 @@ class SnipeMonitor(commands.Cog):
             }
             tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
-                'value': amount_wei,
+                'value': amount_wei,  # ETH natif envoyé
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
@@ -2072,7 +2089,7 @@ class SnipeMonitor(commands.Cog):
             await ctx.send(f"❌ Erreur lors de l'achat: {str(e)}")
 
     async def execute_snipe(self, token_address: str, amount: float):
-        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle)."""
+        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle) en envoyant de l'ETH natif."""
         try:
             amount_wei = w3.to_wei(amount, 'ether')
             deadline = int(time.time()) + 300
@@ -2088,7 +2105,7 @@ class SnipeMonitor(commands.Cog):
             }
             tx = router.functions.exactInputSingle(params).build_transaction({
                 'from': config.WALLET_ADDRESS,
-                'value': amount_wei,
+                'value': amount_wei,  # ETH natif envoyé
                 'gas': config.GAS_LIMIT,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
