@@ -2293,11 +2293,35 @@ class SnipeMonitor(commands.Cog):
                 async with session.post(TELEGRAM_API_URL, json=payload) as response:
                     if response.status == 200:
                         logger.info(f"Commande Telegram envoyée avec succès: {command}")
+                        return True
                     else:
                         logger.error(f"Erreur lors de l'envoi de la commande Telegram: {response.status}")
+                        return False
                         
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi de la commande Telegram: {e}")
+            return False
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def testtelegram(self, ctx):
+        """Teste la connexion avec le bot Telegram en envoyant un message test."""
+        try:
+            # Message initial
+            status_msg = await ctx.send("🔄 Test de la connexion Telegram en cours...")
+
+            # Envoyer un message test au bot Telegram
+            test_command = "/test"
+            success = await self.send_telegram_command(test_command)
+
+            if success:
+                await status_msg.edit(content="✅ Connexion Telegram réussie! Le message test a été envoyé.")
+            else:
+                await status_msg.edit(content="❌ Erreur lors de l'envoi du message test à Telegram.")
+
+        except Exception as e:
+            logger.error(f"Erreur lors du test Telegram: {e}")
+            await ctx.send(f"❌ Erreur lors du test: {str(e)}")
 
 class Bot(commands.Bot):
     def __init__(self):
