@@ -2375,8 +2375,8 @@ class Bot(commands.Bot):
                 if "data" in data:
                     for token in data["data"]:
                         token_address = token.get('contract_address')
-                    if token_address:
-                        clanker_monitor.seen_tokens.add(token_address)
+                        if token_address:
+                            clanker_monitor.seen_tokens.add(token_address)
                 
                 logger.info(f"Cached {len(clanker_monitor.seen_tokens)} initial Clanker tokens")
                 
@@ -2388,7 +2388,7 @@ class Bot(commands.Bot):
         token_monitor.check_trump_posts.start()
         clanker_monitor.monitor_clanker.start()
         clanker_monitor.monitor_clanker_volumes.start()
-        snipe_monitor.monitor_snipes.start()
+        # snipe_monitor.monitor_snipes.start()  # Cette ligne est supprimée car nous n'utilisons plus monitor_snipes
 
     async def on_ready(self):
         """Called when the bot is ready."""
