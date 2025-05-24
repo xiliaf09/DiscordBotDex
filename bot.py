@@ -2313,6 +2313,24 @@ class SnipeMonitor(commands.Cog):
             logger.error(f"Erreur lors du test Telegram: {e}")
             await ctx.send(f"❌ Erreur lors du test: {str(e)}")
 
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def buy(self, ctx, contract: str, amount: float):
+        """Envoie immédiatement la commande /buy <contract> <amount> au bot Telegram."""
+        try:
+            if amount <= 0:
+                await ctx.send("❌ Le montant doit être supérieur à 0.")
+                return
+            telegram_command = f"/buy {contract} {amount}"
+            success = await self.send_telegram_command(telegram_command)
+            if success:
+                await ctx.send(f"✅ Commande envoyée à Telegram : {telegram_command}")
+            else:
+                await ctx.send("❌ Erreur lors de l'envoi de la commande à Telegram.")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'envoi de la commande buy à Telegram: {e}")
+            await ctx.send(f"❌ Erreur : {str(e)}")
+
 class Bot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
