@@ -76,6 +76,8 @@ SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 TRACKED_WALLETS_FILE = "tracked_wallets.json"
 BANNED_FIDS_FILE = "banned_fids.json"
 WHITELISTED_FIDS_FILE = "whitelisted_fids.json"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
+TELEGRAM_USER_ID = os.getenv('TELEGRAM_USER_ID')
 
 # Initialize Web3
 w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
