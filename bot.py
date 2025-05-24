@@ -2100,10 +2100,77 @@ class ClankerMonitor(commands.Cog):
 class SnipeMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Suppression de la référence à Web3 et RPC_URL
-        self.snipe_targets = {}  # Stocke les FIDs à sniper en mémoire
-        self.is_monitoring = False  # État de la surveillance
+        self.snipe_targets = {}
+        self.is_monitoring = False
         self.channel = None
+
+    async def send_buy_webhook(self, token_address: str, amount_eth: float):
+        url = "https://clankersniper-production.up.railway.app/buy_webhook"
+        payload = {
+            "token_address": token_address,
+            "amount_eth": amount_eth
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status == 200:
+                    return True
+                else:
+                    text = await resp.text()
+                    logger.error(f"Erreur webhook: {resp.status} - {text}")
+                    return False
+
+    @commands.command(name="buywebhook")
+    @commands.has_permissions(administrator=True)
+    async def buywebhook(self, ctx, contract: str, amount: float):
+        """Déclenche un achat via le webhook Telegram."""
+        success = await self.send_buy_webhook(contract, amount)
+        if success:
+            await ctx.send(f"✅ Achat déclenché via le webhook pour {contract} ({amount} ETH)")
+        else:
+            await ctx.send("❌ Erreur lors de l'appel du webhook Telegram.")
+
+    async def monitor_new_clankers(self):
+        """Surveille les nouveaux Clankers via l'API et déclenche le sniping si correspondance FID"""
+        seen_contracts = set()
+        while self.is_monitoring:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"https://www.clanker.world/api/tokens", params={"page": 1, "sort": "desc"}) as resp:
+                        if resp.status != 200:
+                            logger.error(f"Erreur API Clanker: {resp.status}")
+                            await asyncio.sleep(2)
+                            continue
+                        data = await resp.json()
+                        tokens = data.get("data", [])
+                        for token in tokens:
+                            contract = token.get("contract_address")
+                            fid = str(token.get("requestor_fid"))
+                            if not contract or not fid:
+                                continue
+                            if contract in seen_contracts:
+                                continue
+                            if fid in self.snipe_targets and self.snipe_targets[fid]["status"] == "pending":
+                                target = self.snipe_targets[fid]
+                                # Appel du webhook au lieu de Telegram
+                                success = await self.send_buy_webhook(contract, target['amount'])
+                                target['status'] = 'executed'
+                                seen_contracts.add(contract)
+                                channel = self.bot.get_channel(target['channel_id'])
+                                if channel:
+                                    embed = discord.Embed(
+                                        title="🎯 Snipe Détecté!",
+                                        description=f"Token Clanker trouvé pour le FID: `{fid}`",
+                                        color=discord.Color.blue()
+                                    )
+                                    embed.add_field(name="Adresse", value=contract, inline=True)
+                                    embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
+                                    embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
+                                    await channel.send(embed=embed)
+                                logger.info(f"Snipe exécuté pour FID {fid} sur {contract} (webhook: {success})")
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"Erreur dans monitor_new_clankers: {e}")
+                await asyncio.sleep(5)
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -2221,52 +2288,6 @@ class SnipeMonitor(commands.Cog):
         count = len(self.snipe_targets)
         self.snipe_targets.clear()
         await ctx.send(f"🗑️ {count} snipes ont été supprimés")
-
-    async def monitor_new_clankers(self):
-        """Surveille les nouveaux Clankers via l'API et déclenche le sniping si correspondance FID"""
-        seen_contracts = set()
-        while self.is_monitoring:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"https://www.clanker.world/api/tokens", params={"page": 1, "sort": "desc"}) as resp:
-                        if resp.status != 200:
-                            logger.error(f"Erreur API Clanker: {resp.status}")
-                            await asyncio.sleep(2)
-                            continue
-                        data = await resp.json()
-                        tokens = data.get("data", [])
-                        for token in tokens:
-                            contract = token.get("contract_address")
-                            fid = str(token.get("requestor_fid"))
-                            if not contract or not fid:
-                                continue
-                            if contract in seen_contracts:
-                                continue
-                            if fid in self.snipe_targets and self.snipe_targets[fid]["status"] == "pending":
-                                target = self.snipe_targets[fid]
-                                telegram_command = f"/buy {contract} {target['amount']}"
-                                # Mettre à jour le statut
-                                target['status'] = 'executed'
-                                seen_contracts.add(contract)
-                                # Notifier sur Discord
-                                channel = self.bot.get_channel(target['channel_id'])
-                                if channel:
-                                    embed = discord.Embed(
-                                        title="🎯 Snipe Détecté!",
-                                        description=f"Token Clanker trouvé pour le FID: `{fid}`",
-                                        color=discord.Color.blue()
-                                    )
-                                    embed.add_field(name="Adresse", value=contract, inline=True)
-                                    embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
-                                    embed.add_field(name="Status", value="✅ Exécution en cours", inline=True)
-                                    await channel.send(embed=embed)
-                                # Envoyer la commande au bot Telegram
-                                await self.send_telegram_command(telegram_command)
-                                logger.info(f"Snipe exécuté pour FID {fid} sur {contract}")
-                await asyncio.sleep(2)
-            except Exception as e:
-                logger.error(f"Erreur dans monitor_new_clankers: {e}")
-                await asyncio.sleep(5)
 
     async def send_telegram_command(self, command):
         """Envoie la commande au bot Telegram"""
