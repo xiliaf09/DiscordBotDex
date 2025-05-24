@@ -2098,11 +2098,7 @@ class ClankerMonitor(commands.Cog):
 class SnipeMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.w3 = Web3(Web3.HTTPProvider(RPC_URL))
-        self.CLANKER_FACTORY = self.w3.eth.contract(
-            address=CLANKER_FACTORY_ADDRESS,
-            abi=CLANKER_FACTORY_ABI
-        )
+        # Suppression de la référence à Web3 et RPC_URL
         self.snipe_targets = {}  # Stocke les FIDs à sniper en mémoire
         self.is_monitoring = False  # État de la surveillance
         self.channel = None
