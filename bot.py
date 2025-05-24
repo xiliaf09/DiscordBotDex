@@ -44,6 +44,28 @@ CLANKER_API_URL = "https://www.clanker.world/api"
 BASESCAN_API_URL = "https://api.basescan.org/api"
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
 ROUTER_ADDRESS = "0x327df1e6de05895d2ab08513aadd9313fe505d86"
+CLANKER_FACTORY_ADDRESS = "0x..."  # À remplacer par l'adresse réelle
+CLANKER_FACTORY_ABI = [
+    {
+        "anonymous": False,
+        "inputs": [
+            {
+                "indexed": True,
+                "internalType": "address",
+                "name": "clankerAddress",
+                "type": "address"
+            },
+            {
+                "indexed": True,
+                "internalType": "uint256",
+                "name": "fid",
+                "type": "uint256"
+            }
+        ],
+        "name": "ClankerCreated",
+        "type": "event"
+    }
+]
 MONITORED_CHAINS = {
     "base": "Base",
     "solana": "Solana"
@@ -2076,238 +2098,210 @@ class ClankerMonitor(commands.Cog):
 class SnipeMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_snipes = {}  # {fid: {"amount": float, "timestamp": str}}
+        self.w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        self.CLANKER_FACTORY = self.w3.eth.contract(
+            address=CLANKER_FACTORY_ADDRESS,
+            abi=CLANKER_FACTORY_ABI
+        )
+        self.snipe_targets = {}  # Stocke les FIDs à sniper en mémoire
+        self.is_monitoring = False  # État de la surveillance
         self.channel = None
-        self.is_active = True
-
-    def _load_active_snipes(self):
-        """Load active snipes from database."""
-        try:
-            conn = sqlite3.connect('snipes.db')
-            c = conn.cursor()
-            c.execute("SELECT * FROM active_snipes")
-            snipes = c.fetchall()
-            conn.close()
-            
-            for fid, amount, timestamp in snipes:
-                self.active_snipes[fid] = {
-                    "amount": amount,
-                    "timestamp": timestamp
-                }
-        except Exception as e:
-            logger.error(f"Error loading active snipes: {e}")
-
-    def _save_active_snipes(self):
-        """Save active snipes to database."""
-        try:
-            conn = sqlite3.connect('snipes.db')
-            c = conn.cursor()
-            c.execute("DELETE FROM active_snipes")
-            for fid, data in self.active_snipes.items():
-                c.execute("INSERT INTO active_snipes VALUES (?, ?, ?)",
-                         (fid, data["amount"], data["timestamp"]))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Error saving active snipes: {e}")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def snipe(self, ctx, fid: str, amount: float):
-        """Configure un snipe pour un FID spécifique."""
-        if not fid.isdigit():
-            await ctx.send("❌ Le FID doit être un nombre.")
-            return
+        """Commande pour sniper un token Clanker spécifique basé sur son FID"""
+        try:
+            # Vérifier que le montant est valide
+            if amount <= 0:
+                await ctx.send("❌ Le montant doit être supérieur à 0")
+                return
 
-        if amount <= 0:
-            await ctx.send("❌ Le montant doit être supérieur à 0.")
-            return
+            # Stocker les informations de sniping
+            self.snipe_targets[fid] = {
+                'amount': amount,
+                'channel_id': ctx.channel.id,
+                'user_id': ctx.author.id,
+                'status': 'pending',
+                'created_at': datetime.now().isoformat()
+            }
 
-        # Vérifier si le FID est déjà en snipe
-        if fid in self.active_snipes:
-            await ctx.send(f"❌ Un snipe est déjà configuré pour le FID {fid}.")
-            return
+            # Message de confirmation
+            embed = discord.Embed(
+                title="🎯 Snipe Configuré",
+                description=f"Le bot va maintenant surveiller les nouveaux Clankers avec le FID: `{fid}`",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Montant", value=f"{amount} ETH", inline=True)
+            embed.add_field(name="Status", value="⏳ En attente", inline=True)
+            await ctx.send(embed=embed)
 
-        # Ajouter le snipe
-        self.active_snipes[fid] = {
-            "amount": amount,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        self._save_active_snipes()
+            # Démarrer la surveillance si pas déjà active
+            if not self.is_monitoring:
+                self.is_monitoring = True
+                asyncio.create_task(self.monitor_new_clankers())
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la configuration du snipe: {e}")
+            await ctx.send(f"❌ Erreur: {str(e)}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def listsnipes(self, ctx):
+        """Liste tous les snipes en attente"""
+        if not self.snipe_targets:
+            await ctx.send("📝 Aucun snipe en attente")
+            return
 
         embed = discord.Embed(
-            title="🎯 Snipe Configuré",
-            description=f"Un snipe a été configuré pour le FID {fid}",
-            color=discord.Color.green()
+            title="📝 Liste des Snipes",
+            description="Voici tous les snipes en attente :",
+            color=discord.Color.blue()
         )
-        embed.add_field(name="Montant", value=f"{amount} ETH", inline=True)
-        embed.add_field(name="Status", value="✅ Actif", inline=True)
+
+        for fid, data in self.snipe_targets.items():
+            if data['status'] == 'pending':
+                embed.add_field(
+                    name=f"FID: {fid}",
+                    value=f"Montant: {data['amount']} ETH\nStatus: {data['status']}\nCréé le: {data['created_at']}",
+                    inline=False
+                )
+
         await ctx.send(embed=embed)
 
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def cancelsnipe(self, ctx, fid: str):
-        """Annule un snipe pour un FID spécifique."""
-        if fid not in self.active_snipes:
-            await ctx.send(f"❌ Aucun snipe actif pour le FID {fid}.")
+        """Annule un snipe en attente"""
+        if fid not in self.snipe_targets:
+            await ctx.send(f"❌ Aucun snipe trouvé pour le FID: {fid}")
             return
 
-        del self.active_snipes[fid]
-        self._save_active_snipes()
-        await ctx.send(f"✅ Snipe annulé pour le FID {fid}.")
+        if self.snipe_targets[fid]['status'] != 'pending':
+            await ctx.send(f"❌ Ce snipe n'est plus en attente (status: {self.snipe_targets[fid]['status']})")
+            return
+
+        del self.snipe_targets[fid]
+        await ctx.send(f"✅ Snipe annulé pour le FID: {fid}")
 
     @commands.command()
-    async def listsnipes(self, ctx):
-        """Liste tous les snipes actifs."""
-        if not self.active_snipes:
-            await ctx.send("📝 Aucun snipe actif.")
+    @commands.has_permissions(administrator=True)
+    async def editsnipe(self, ctx, fid: str, new_amount: float):
+        """Modifie le montant d'un snipe en attente"""
+        if fid not in self.snipe_targets:
+            await ctx.send(f"❌ Aucun snipe trouvé pour le FID: {fid}")
             return
 
+        if self.snipe_targets[fid]['status'] != 'pending':
+            await ctx.send(f"❌ Ce snipe n'est plus en attente (status: {self.snipe_targets[fid]['status']})")
+            return
+
+        if new_amount <= 0:
+            await ctx.send("❌ Le nouveau montant doit être supérieur à 0")
+            return
+
+        old_amount = self.snipe_targets[fid]['amount']
+        self.snipe_targets[fid]['amount'] = new_amount
+
         embed = discord.Embed(
-            title="📝 Snipes Actifs",
+            title="✏️ Snipe Modifié",
+            description=f"Le montant du snipe pour le FID {fid} a été modifié",
             color=discord.Color.blue()
         )
-
-        for fid, data in self.active_snipes.items():
-            embed.add_field(
-                name=f"FID: {fid}",
-                value=f"Montant: {data['amount']} ETH\nConfiguré le: {data['timestamp']}",
-                inline=False
-            )
-
+        embed.add_field(name="Ancien montant", value=f"{old_amount} ETH", inline=True)
+        embed.add_field(name="Nouveau montant", value=f"{new_amount} ETH", inline=True)
         await ctx.send(embed=embed)
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def buy(self, ctx, token_address: str, amount: float):
-        """Achete un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
-        if amount <= 0:
-            await ctx.send("❌ Le montant doit être supérieur à 0.")
-            return
-        try:
-            amount_wei = w3.to_wei(amount, 'ether')
-            # 1. Wrap ETH en WETH si besoin
-            tx_hash_wrap = await self.ensure_weth(amount_wei)
-            if tx_hash_wrap:
-                await ctx.send(f"ETH wrap en WETH envoyé ! Hash: {tx_hash_wrap}. Attends la confirmation avant de swap.")
-                # Optionnel : attendre la confirmation du wrap avant de continuer
-            # 2. Approve le routeur si besoin
-            tx_hash_approve = await self.ensure_approve(amount_wei)
-            if tx_hash_approve:
-                await ctx.send(f"Approve WETH envoyé ! Hash: {tx_hash_approve}. Attends la confirmation avant de swap.")
-                # Optionnel : attendre la confirmation de l'approve
-            # 3. Swap WETH -> token
-            deadline = int(time.time()) + 300
-            params = {
-                'tokenIn': config.WETH_ADDRESS,
-                'tokenOut': token_address,
-                'fee': 3000,  # 0.3% pool
-                'recipient': config.WALLET_ADDRESS,
-                'deadline': deadline,
-                'amountIn': amount_wei,
-                'amountOutMinimum': 0,  # à ajuster pour le slippage
-                'sqrtPriceLimitX96': 0
-            }
-            tx = router.functions.exactInputSingle(params).build_transaction({
-                'from': config.WALLET_ADDRESS,
-                'gas': config.GAS_LIMIT,
-                'gasPrice': w3.eth.gas_price,
-                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
-            })
-            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
-            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            embed = discord.Embed(
-                title="🔄 Transaction Envoyée",
-                description=f"Hash: {tx_hash.hex()}\nMontant: {amount} WETH",
-                color=discord.Color.blue()
-            )
-            await ctx.send(embed=embed)
-        except Exception as e:
-            logger.error(f"Error during buy: {e}")
-            await ctx.send(f"❌ Erreur lors de l'achat: {str(e)}")
-
-    async def execute_snipe(self, token_address: str, amount: float):
-        """Exécute un snipe pour un token via Uniswap V3 (exactInputSingle) en WETH (wrap auto si besoin)."""
-        try:
-            amount_wei = w3.to_wei(amount, 'ether')
-            await self.ensure_weth(amount_wei)
-            await self.ensure_approve(amount_wei)
-            deadline = int(time.time()) + 300
-            params = {
-                'tokenIn': config.WETH_ADDRESS,
-                'tokenOut': token_address,
-                'fee': 3000,  # 0.3% pool
-                'recipient': config.WALLET_ADDRESS,
-                'deadline': deadline,
-                'amountIn': amount_wei,
-                'amountOutMinimum': 0,  # à ajuster pour le slippage
-                'sqrtPriceLimitX96': 0
-            }
-            tx = router.functions.exactInputSingle(params).build_transaction({
-                'from': config.WALLET_ADDRESS,
-                'gas': config.GAS_LIMIT,
-                'gasPrice': w3.eth.gas_price,
-                'nonce': w3.eth.get_transaction_count(config.WALLET_ADDRESS),
-            })
-            signed_tx = w3.eth.account.sign_transaction(tx, config.WALLET_PRIVATE_KEY)
-            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            if self.channel:
-                embed = discord.Embed(
-                    title="🎯 Snipe Exécuté",
-                    description=f"Token: {token_address}\nMontant: {amount} WETH",
-                    color=discord.Color.green()
-                )
-                embed.add_field(name="Hash", value=tx_hash.hex(), inline=False)
-                await self.channel.send(embed=embed)
-            return True
-        except Exception as e:
-            logger.error(f"Error executing snipe: {e}")
-            if self.channel:
-                embed = discord.Embed(
-                    title="❌ Erreur de Snipe",
-                    description=f"Token: {token_address}\nMontant: {amount} WETH",
-                    color=discord.Color.red()
-                )
-                embed.add_field(name="Erreur", value=str(e), inline=False)
-                await self.channel.send(embed=embed)
-            return False
-
-    @tasks.loop(seconds=2)
-    async def monitor_snipes(self):
-        """Surveille les nouveaux tokens pour exécuter les snipes."""
-        if not self.is_active or not self.channel:
+    async def clearsnipes(self, ctx):
+        """Supprime tous les snipes en attente"""
+        if not self.snipe_targets:
+            await ctx.send("📝 Aucun snipe à supprimer")
             return
 
+        count = len(self.snipe_targets)
+        self.snipe_targets.clear()
+        await ctx.send(f"🗑️ {count} snipes ont été supprimés")
+
+    async def monitor_new_clankers(self):
+        """Surveille les nouveaux Clankers et déclenche le sniping si correspondance"""
+        while self.is_monitoring:
+            try:
+                # Récupérer les derniers blocs
+                latest_block = self.w3.eth.block_number
+                
+                # Vérifier les nouveaux Clankers
+                for block_number in range(latest_block - 10, latest_block + 1):
+                    block = self.w3.eth.get_block(block_number, full_transactions=True)
+                    
+                    for tx in block.transactions:
+                        if tx['to'] == CLANKER_FACTORY_ADDRESS:
+                            # Décoder les logs pour obtenir le FID
+                            receipt = self.w3.eth.get_transaction_receipt(tx['hash'])
+                            for log in receipt['logs']:
+                                if log['address'] == CLANKER_FACTORY_ADDRESS:
+                                    try:
+                                        # Décoder le FID du log
+                                        decoded_log = self.CLANKER_FACTORY.events.ClankerCreated().process_log(log)
+                                        new_fid = decoded_log['args']['fid']
+                                        
+                                        # Vérifier si ce FID est dans nos cibles
+                                        if new_fid in self.snipe_targets:
+                                            target = self.snipe_targets[new_fid]
+                                            
+                                            # Envoyer la commande au bot Telegram
+                                            telegram_command = f"/buy {decoded_log['args']['clankerAddress']} {target['amount']}"
+                                            
+                                            # Mettre à jour le status
+                                            target['status'] = 'executed'
+                                            
+                                            # Notifier sur Discord
+                                            channel = self.bot.get_channel(target['channel_id'])
+                                            if channel:
+                                                embed = discord.Embed(
+                                                    title="🎯 Snipe Détecté!",
+                                                    description=f"Token Clanker trouvé pour le FID: `{new_fid}`",
+                                                    color=discord.Color.blue()
+                                                )
+                                                embed.add_field(name="Adresse", value=decoded_log['args']['clankerAddress'], inline=True)
+                                                embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
+                                                embed.add_field(name="Status", value="✅ Exécution en cours", inline=True)
+                                                await channel.send(embed=embed)
+                                            
+                                            # Envoyer la commande au bot Telegram
+                                            await self.send_telegram_command(telegram_command)
+                                            
+                                    except Exception as e:
+                                        logger.error(f"Erreur lors du traitement du log: {e}")
+                                        continue
+                
+                await asyncio.sleep(1)  # Attendre 1 seconde avant la prochaine vérification
+                
+            except Exception as e:
+                logger.error(f"Erreur dans monitor_new_clankers: {e}")
+                await asyncio.sleep(5)  # Attendre plus longtemps en cas d'erreur
+
+    async def send_telegram_command(self, command):
+        """Envoie la commande au bot Telegram"""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
-                response.raise_for_status()
-                data = response.json()
-
-                if not isinstance(data, dict) or "data" not in data:
-                    return
-
-                tokens = data["data"]
-                for token in tokens:
-                    fid = str(token.get('requestor_fid', ''))
-                    if fid in self.active_snipes:
-                        contract_address = token.get('contract_address')
-                        if contract_address:
-                            amount = self.active_snipes[fid]["amount"]
-                            if await self.execute_snipe(contract_address, amount):
-                                # Supprimer le snipe après exécution réussie
-                                del self.active_snipes[fid]
-                                self._save_active_snipes()
-
+            # Configuration de la requête
+            payload = {
+                "chat_id": TELEGRAM_USER_ID,
+                "text": command,
+                "parse_mode": "HTML"
+            }
+            
+            # Envoi de la requête
+            async with aiohttp.ClientSession() as session:
+                async with session.post(TELEGRAM_API_URL, json=payload) as response:
+                    if response.status == 200:
+                        logger.info(f"Commande Telegram envoyée avec succès: {command}")
+                    else:
+                        logger.error(f"Erreur lors de l'envoi de la commande Telegram: {response.status}")
+                        
         except Exception as e:
-            logger.error(f"Error monitoring snipes: {e}")
-
-    @monitor_snipes.before_loop
-    async def before_monitor_snipes(self):
-        """Wait for bot to be ready before starting the snipe monitoring loop."""
-        await self.bot.wait_until_ready()
-        self.channel = self.bot.get_channel(CHANNEL_ID)
-        self._load_active_snipes()
+            logger.error(f"Erreur lors de l'envoi de la commande Telegram: {e}")
 
 class Bot(commands.Bot):
     def __init__(self):
