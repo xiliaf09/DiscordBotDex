@@ -2223,62 +2223,50 @@ class SnipeMonitor(commands.Cog):
         await ctx.send(f"🗑️ {count} snipes ont été supprimés")
 
     async def monitor_new_clankers(self):
-        """Surveille les nouveaux Clankers et déclenche le sniping si correspondance"""
+        """Surveille les nouveaux Clankers via l'API et déclenche le sniping si correspondance FID"""
+        seen_contracts = set()
         while self.is_monitoring:
             try:
-                # Récupérer les derniers blocs
-                latest_block = self.w3.eth.block_number
-                
-                # Vérifier les nouveaux Clankers
-                for block_number in range(latest_block - 10, latest_block + 1):
-                    block = self.w3.eth.get_block(block_number, full_transactions=True)
-                    
-                    for tx in block.transactions:
-                        if tx['to'] == CLANKER_FACTORY_ADDRESS:
-                            # Décoder les logs pour obtenir le FID
-                            receipt = self.w3.eth.get_transaction_receipt(tx['hash'])
-                            for log in receipt['logs']:
-                                if log['address'] == CLANKER_FACTORY_ADDRESS:
-                                    try:
-                                        # Décoder le FID du log
-                                        decoded_log = self.CLANKER_FACTORY.events.ClankerCreated().process_log(log)
-                                        new_fid = decoded_log['args']['fid']
-                                        
-                                        # Vérifier si ce FID est dans nos cibles
-                                        if new_fid in self.snipe_targets:
-                                            target = self.snipe_targets[new_fid]
-                                            
-                                            # Envoyer la commande au bot Telegram
-                                            telegram_command = f"/buy {decoded_log['args']['clankerAddress']} {target['amount']}"
-                                            
-                                            # Mettre à jour le status
-                                            target['status'] = 'executed'
-                                            
-                                            # Notifier sur Discord
-                                            channel = self.bot.get_channel(target['channel_id'])
-                                            if channel:
-                                                embed = discord.Embed(
-                                                    title="🎯 Snipe Détecté!",
-                                                    description=f"Token Clanker trouvé pour le FID: `{new_fid}`",
-                                                    color=discord.Color.blue()
-                                                )
-                                                embed.add_field(name="Adresse", value=decoded_log['args']['clankerAddress'], inline=True)
-                                                embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
-                                                embed.add_field(name="Status", value="✅ Exécution en cours", inline=True)
-                                                await channel.send(embed=embed)
-                                            
-                                            # Envoyer la commande au bot Telegram
-                                            await self.send_telegram_command(telegram_command)
-                                            
-                                    except Exception as e:
-                                        logger.error(f"Erreur lors du traitement du log: {e}")
-                                        continue
-                
-                await asyncio.sleep(1)  # Attendre 1 seconde avant la prochaine vérification
-                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"https://www.clanker.world/api/tokens", params={"page": 1, "sort": "desc"}) as resp:
+                        if resp.status != 200:
+                            logger.error(f"Erreur API Clanker: {resp.status}")
+                            await asyncio.sleep(2)
+                            continue
+                        data = await resp.json()
+                        tokens = data.get("data", [])
+                        for token in tokens:
+                            contract = token.get("contract_address")
+                            fid = str(token.get("requestor_fid"))
+                            if not contract or not fid:
+                                continue
+                            if contract in seen_contracts:
+                                continue
+                            if fid in self.snipe_targets and self.snipe_targets[fid]["status"] == "pending":
+                                target = self.snipe_targets[fid]
+                                telegram_command = f"/buy {contract} {target['amount']}"
+                                # Mettre à jour le statut
+                                target['status'] = 'executed'
+                                seen_contracts.add(contract)
+                                # Notifier sur Discord
+                                channel = self.bot.get_channel(target['channel_id'])
+                                if channel:
+                                    embed = discord.Embed(
+                                        title="🎯 Snipe Détecté!",
+                                        description=f"Token Clanker trouvé pour le FID: `{fid}`",
+                                        color=discord.Color.blue()
+                                    )
+                                    embed.add_field(name="Adresse", value=contract, inline=True)
+                                    embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
+                                    embed.add_field(name="Status", value="✅ Exécution en cours", inline=True)
+                                    await channel.send(embed=embed)
+                                # Envoyer la commande au bot Telegram
+                                await self.send_telegram_command(telegram_command)
+                                logger.info(f"Snipe exécuté pour FID {fid} sur {contract}")
+                await asyncio.sleep(2)
             except Exception as e:
                 logger.error(f"Erreur dans monitor_new_clankers: {e}")
-                await asyncio.sleep(5)  # Attendre plus longtemps en cas d'erreur
+                await asyncio.sleep(5)
 
     async def send_telegram_command(self, command):
         """Envoie la commande au bot Telegram"""
