@@ -2104,12 +2104,14 @@ class SnipeMonitor(commands.Cog):
         self.is_monitoring = False
         self.channel = None
 
-    async def send_buy_webhook(self, token_address: str, amount_eth: float):
+    async def send_buy_webhook(self, token_address: str, amount_eth: float, gas_fees: float = None):
         url = "https://clankersniper-production.up.railway.app/buy_webhook"
         payload = {
             "token_address": token_address,
             "amount_eth": amount_eth
         }
+        if gas_fees is not None:
+            payload["gas_fees"] = gas_fees
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as resp:
                 if resp.status == 200:
@@ -2121,11 +2123,11 @@ class SnipeMonitor(commands.Cog):
 
     @commands.command(name="buywebhook")
     @commands.has_permissions(administrator=True)
-    async def buywebhook(self, ctx, contract: str, amount: float):
-        """Déclenche un achat via le webhook Telegram."""
-        success = await self.send_buy_webhook(contract, amount)
+    async def buywebhook(self, ctx, contract: str, amount: float, gas_fees: float):
+        """Déclenche un achat via le webhook Telegram avec gas fees."""
+        success = await self.send_buy_webhook(contract, amount, gas_fees)
         if success:
-            await ctx.send(f"✅ Achat déclenché via le webhook pour {contract} ({amount} ETH)")
+            await ctx.send(f"✅ Achat déclenché via le webhook pour {contract} ({amount} ETH, gas: {gas_fees} ETH)")
         else:
             await ctx.send("❌ Erreur lors de l'appel du webhook Telegram.")
 
@@ -2151,8 +2153,7 @@ class SnipeMonitor(commands.Cog):
                                 continue
                             if fid in self.snipe_targets and self.snipe_targets[fid]["status"] == "pending":
                                 target = self.snipe_targets[fid]
-                                # Appel du webhook au lieu de Telegram
-                                success = await self.send_buy_webhook(contract, target['amount'])
+                                success = await self.send_buy_webhook(contract, target['amount'], target['gas_fees'])
                                 target['status'] = 'executed'
                                 seen_contracts.add(contract)
                                 channel = self.bot.get_channel(target['channel_id'])
@@ -2164,6 +2165,7 @@ class SnipeMonitor(commands.Cog):
                                     )
                                     embed.add_field(name="Adresse", value=contract, inline=True)
                                     embed.add_field(name="Montant", value=f"{target['amount']} ETH", inline=True)
+                                    embed.add_field(name="Gas Fees", value=f"{target['gas_fees']} ETH", inline=True)
                                     embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
                                     await channel.send(embed=embed)
                                 logger.info(f"Snipe exécuté pour FID {fid} sur {contract} (webhook: {success})")
@@ -2174,38 +2176,35 @@ class SnipeMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def snipe(self, ctx, fid: str, amount: float):
-        """Commande pour sniper un token Clanker spécifique basé sur son FID"""
+    async def snipe(self, ctx, fid: str, amount: float, gas_fees: float):
+        """Commande pour sniper un token Clanker spécifique basé sur son FID, montant et gas fees"""
         try:
-            # Vérifier que le montant est valide
             if amount <= 0:
                 await ctx.send("❌ Le montant doit être supérieur à 0")
                 return
-
-            # Stocker les informations de sniping
+            if gas_fees <= 0:
+                await ctx.send("❌ Les gas fees doivent être supérieurs à 0")
+                return
             self.snipe_targets[fid] = {
                 'amount': amount,
+                'gas_fees': gas_fees,
                 'channel_id': ctx.channel.id,
                 'user_id': ctx.author.id,
                 'status': 'pending',
                 'created_at': datetime.now().isoformat()
             }
-
-            # Message de confirmation
             embed = discord.Embed(
                 title="🎯 Snipe Configuré",
                 description=f"Le bot va maintenant surveiller les nouveaux Clankers avec le FID: `{fid}`",
                 color=discord.Color.green()
             )
             embed.add_field(name="Montant", value=f"{amount} ETH", inline=True)
+            embed.add_field(name="Gas Fees", value=f"{gas_fees} ETH", inline=True)
             embed.add_field(name="Status", value="⏳ En attente", inline=True)
             await ctx.send(embed=embed)
-
-            # Démarrer la surveillance si pas déjà active
             if not self.is_monitoring:
                 self.is_monitoring = True
                 asyncio.create_task(self.monitor_new_clankers())
-
         except Exception as e:
             logger.error(f"Erreur lors de la configuration du snipe: {e}")
             await ctx.send(f"❌ Erreur: {str(e)}")
