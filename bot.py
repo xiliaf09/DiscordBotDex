@@ -2169,7 +2169,7 @@ class SnipeMonitor(commands.Cog):
                                     embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
                                     await channel.send(embed=embed)
                                 logger.info(f"Snipe exécuté pour FID {fid} sur {contract} (webhook: {success})")
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.5)
             except Exception as e:
                 logger.error(f"Erreur dans monitor_new_clankers: {e}")
                 await asyncio.sleep(5)
