@@ -1423,10 +1423,12 @@ class ClankerMonitor(commands.Cog):
                                 logger.info(f"On-chain alert ignorée : FID {fid} non whitelisté en mode premium_only.")
                                 continue
                         # ---
+                        # Vérifier si le FID est whitelisté
+                        is_premium = fid and fid in self.whitelisted_fids
                         # Envoie l'alerte Discord
                         embed = discord.Embed(
-                            title="🆕 Nouveau Token Clanker (on-chain)",
-                            color=discord.Color.purple(),
+                            title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
+                            color=discord.Color.gold() if is_premium else discord.Color.purple(),
                             timestamp=datetime.now(timezone.utc)
                         )
                         embed.add_field(name="Nom du Token", value=name, inline=True)
@@ -1438,7 +1440,7 @@ class ClankerMonitor(commands.Cog):
                         if image:
                             embed.set_thumbnail(url=image)
                         if fid:
-                            embed.add_field(name="FID", value=fid, inline=True)
+                            embed.add_field(name="FID", value=f"{fid} 🥇" if is_premium else fid, inline=True)
                         await channel.send(embed=embed)
                         logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
                         # Déclenchement du snipe instantané si FID match
