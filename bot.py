@@ -2482,7 +2482,7 @@ class Bot(commands.Bot):
         # Start monitoring tasks
         token_monitor.monitor_tokens.start()
         token_monitor.check_trump_posts.start()
-        clanker_monitor.monitor_clanker.start()
+        # clanker_monitor.monitor_clanker.start()  # Supprimé car remplacé par l'écoute on-chain
         clanker_monitor.monitor_clanker_volumes.start()
         # snipe_monitor.monitor_snipes.start()  # Cette ligne est supprimée car nous n'utilisons plus monitor_snipes
         # Lancer la tâche d'écoute on-chain
