@@ -1432,6 +1432,9 @@ class ClankerMonitor(commands.Cog):
                         embed.add_field(name="Nom du Token", value=name, inline=True)
                         embed.add_field(name="Ticker", value=symbol, inline=True)
                         embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
+                        # Ajout du lien Clanker.world
+                        clanker_link = f"https://www.clanker.world/clanker/{token_address}"
+                        embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
                         if image:
                             embed.set_thumbnail(url=image)
                         if fid:
