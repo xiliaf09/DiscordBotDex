@@ -19,6 +19,7 @@ import aiohttp
 import sqlite3
 from datetime import datetime
 import config
+from web3.middleware import geth_poa_middleware
 
 # Configure logging
 logging.basicConfig(
@@ -44,27 +45,59 @@ CLANKER_API_URL = "https://www.clanker.world/api"
 BASESCAN_API_URL = "https://api.basescan.org/api"
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
 ROUTER_ADDRESS = "0x327df1e6de05895d2ab08513aadd9313fe505d86"
-CLANKER_FACTORY_ADDRESS = "0x..."  # À remplacer par l'adresse réelle
+CLANKER_FACTORY_ADDRESS = "0x2A787b2362021cC3eEa3C24C4748a6cD5B687382"
 CLANKER_FACTORY_ABI = [
-    {
-        "anonymous": False,
-        "inputs": [
-            {
-                "indexed": True,
-                "internalType": "address",
-                "name": "clankerAddress",
-                "type": "address"
-            },
-            {
-                "indexed": True,
-                "internalType": "uint256",
-                "name": "fid",
-                "type": "uint256"
-            }
-        ],
-        "name": "ClankerCreated",
-        "type": "event"
-    }
+    {"inputs":[{"internalType":"address","name":"owner_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},
+    {"inputs":[],"name":"Deprecated","type":"error"},
+    {"inputs":[],"name":"InvalidCreatorInfo","type":"error"},
+    {"inputs":[],"name":"InvalidCreatorReward","type":"error"},
+    {"inputs":[],"name":"InvalidInterfaceInfo","type":"error"},
+    {"inputs":[],"name":"InvalidTick","type":"error"},
+    {"inputs":[],"name":"InvalidVaultConfiguration","type":"error"},
+    {"inputs":[],"name":"NotFound","type":"error"},
+    {"inputs":[],"name":"OnlyNonOriginatingChains","type":"error"},
+    {"inputs":[],"name":"OnlyOriginatingChain","type":"error"},
+    {"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},
+    {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},
+    {"inputs":[],"name":"ReentrancyGuardReentrantCall","type":"error"},
+    {"inputs":[],"name":"Unauthorized","type":"error"},
+    {"inputs":[],"name":"ZeroTeamRewardRecipient","type":"error"},
+    {"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"oldClankerDeployer","type":"address"},{"indexed":false,"internalType":"address","name":"newClankerDeployer","type":"address"}],"name":"ClankerDeployerUpdated","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"oldLocker","type":"address"},{"indexed":false,"internalType":"address","name":"newLocker","type":"address"}],"name":"LiquidityLockerUpdated","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"admin","type":"address"},{"indexed":false,"internalType":"bool","name":"isAdmin","type":"bool"}],"name":"SetAdmin","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":false,"internalType":"bool","name":"deprecated","type":"bool"}],"name":"SetDeprecated","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"tokenAddress","type":"address"},{"indexed":true,"internalType":"address","name":"creatorAdmin","type":"address"},{"indexed":true,"internalType":"address","name":"interfaceAdmin","type":"address"},{"indexed":false,"internalType":"address","name":"creatorRewardRecipient","type":"address"},{"indexed":false,"internalType":"address","name":"interfaceRewardRecipient","type":"address"},{"indexed":false,"internalType":"uint256","name":"positionId","type":"uint256"},{"indexed":false,"internalType":"string","name":"name","type":"string"},{"indexed":false,"internalType":"string","name":"symbol","type":"string"},{"indexed":false,"internalType":"int24","name":"startingTickIfToken0IsNewToken","type":"int24"},{"indexed":false,"internalType":"string","name":"metadata","type":"string"},{"indexed":false,"internalType":"uint256","name":"amountTokensBought","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"vaultDuration","type":"uint256"},{"indexed":false,"internalType":"uint8","name":"vaultPercentage","type":"uint8"},{"indexed":false,"internalType":"address","name":"msgSender","type":"address"}],"name":"TokenCreated","type":"event"},
+    {"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"oldVault","type":"address"},{"indexed":false,"internalType":"address","name":"newVault","type":"address"}],"name":"VaultUpdated","type":"event"},
+    {"inputs":[],"name":"MAX_CREATOR_REWARD","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"MAX_TICK","outputs":[{"internalType":"int24","name":"","type":"int24"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"MAX_VAULT_PERCENTAGE","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"POOL_FEE","outputs":[{"internalType":"uint24","name":"","type":"uint24"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"TICK_SPACING","outputs":[{"internalType":"int24","name":"","type":"int24"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"TOKEN_SUPPLY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"admins","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"claimRewards","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"components":[{"components":[{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"symbol","type":"string"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"string","name":"image","type":"string"},{"internalType":"string","name":"metadata","type":"string"},{"internalType":"string","name":"context","type":"string"},{"internalType":"uint256","name":"originatingChainId","type":"uint256"}],"internalType":"struct IClanker.TokenConfig","name":"tokenConfig","type":"tuple"},{"components":[{"internalType":"uint8","name":"vaultPercentage","type":"uint8"},{"internalType":"uint256","name":"vaultDuration","type":"uint256"}],"internalType":"struct IClanker.VaultConfig","name":"vaultConfig","type":"tuple"},{"components":[{"internalType":"address","name":"pairedToken","type":"address"},{"internalType":"int24","name":"tickIfToken0IsNewToken","type":"int24"}],"internalType":"struct IClanker.PoolConfig","name":"poolConfig","type":"tuple"},{"components":[{"internalType":"uint24","name":"pairedTokenPoolFee","type":"uint24"},{"internalType":"uint256","name":"pairedTokenSwapAmountOutMinimum","type":"uint256"}],"internalType":"struct IClanker.InitialBuyConfig","name":"initialBuyConfig","type":"tuple"},{"components":[{"internalType":"uint256","name":"creatorReward","type":"uint256"},{"internalType":"address","name":"creatorAdmin","type":"address"},{"internalType":"address","name":"creatorRewardRecipient","type":"address"},{"internalType":"address","name":"interfaceAdmin","type":"address"},{"internalType":"address","name":"interfaceRewardRecipient","type":"address"}],"internalType":"struct IClanker.RewardsConfig","name":"rewardsConfig","type":"tuple"}],"internalType":"struct IClanker.DeploymentConfig","name":"deploymentConfig","type":"tuple"}],"name":"deployToken","outputs":[{"internalType":"address","name":"tokenAddress","type":"address"},{"internalType":"uint256","name":"positionId","type":"uint256"}],"stateMutability":"payable","type":"function"},
+    {"inputs":[{"components":[{"components":[{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"symbol","type":"string"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"string","name":"image","type":"string"},{"internalType":"string","name":"metadata","type":"string"},{"internalType":"string","name":"context","type":"string"},{"internalType":"uint256","name":"originatingChainId","type":"uint256"}],"internalType":"struct IClanker.TokenConfig","name":"tokenConfig","type":"tuple"},{"components":[{"internalType":"uint8","name":"vaultPercentage","type":"uint8"},{"internalType":"uint256","name":"vaultDuration","type":"uint256"}],"internalType":"struct IClanker.VaultConfig","name":"vaultConfig","type":"tuple"},{"components":[{"internalType":"address","name":"pairedToken","type":"address"},{"internalType":"int24","name":"tickIfToken0IsNewToken","type":"int24"}],"internalType":"struct IClanker.PoolConfig","name":"poolConfig","type":"tuple"},{"components":[{"internalType":"uint24","name":"pairedTokenPoolFee","type":"uint24"},{"internalType":"uint256","name":"pairedTokenSwapAmountOutMinimum","type":"uint256"}],"internalType":"struct IClanker.InitialBuyConfig","name":"initialBuyConfig","type":"tuple"},{"components":[{"internalType":"uint256","name":"creatorReward","type":"uint256"},{"internalType":"address","name":"creatorAdmin","type":"address"},{"internalType":"address","name":"creatorRewardRecipient","type":"address"},{"internalType":"address","name":"interfaceAdmin","type":"address"},{"internalType":"address","name":"interfaceRewardRecipient","type":"address"}],"internalType":"struct IClanker.RewardsConfig","name":"rewardsConfig","type":"tuple"}],"internalType":"struct IClanker.DeploymentConfig","name":"deploymentConfig","type":"tuple"},{"internalType":"address","name":"teamRewardRecipient","type":"address"}],"name":"deployTokenWithCustomTeamRewardRecipient","outputs":[{"internalType":"address","name":"tokenAddress","type":"address"},{"internalType":"uint256","name":"positionId","type":"uint256"}],"stateMutability":"payable","type":"function"},
+    {"inputs":[{"components":[{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"symbol","type":"string"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"string","name":"image","type":"string"},{"internalType":"string","name":"metadata","type":"string"},{"internalType":"string","name":"context","type":"string"},{"internalType":"uint256","name":"originatingChainId","type":"uint256"}],"internalType":"struct IClanker.TokenConfig","name":"tokenConfig","type":"tuple"},{"internalType":"address","name":"tokenAdmin","type":"address"}],"name":"deployTokenZeroSupply","outputs":[{"internalType":"address","name":"tokenAddress","type":"address"}],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"deploymentInfoForToken","outputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"positionId","type":"uint256"},{"internalType":"address","name":"locker","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"deprecated","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getTokensDeployedByUser","outputs":[{"components":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"positionId","type":"uint256"},{"internalType":"address","name":"locker","type":"address"}],"internalType":"struct IClanker.DeploymentInfo[]","name":"","type":"tuple[]"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"uniswapV3Factory_","type":"address"},{"internalType":"address","name":"positionManager_","type":"address"},{"internalType":"address","name":"swapRouter_","type":"address"},{"internalType":"address","name":"weth_","type":"address"},{"internalType":"address","name":"liquidityLocker_","type":"address"},{"internalType":"address","name":"vault_","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[],"name":"liquidityLocker","outputs":[{"internalType":"contract ILpLockerv2","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"positionManager","outputs":[{"internalType":"contract INonfungiblePositionManager","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"admin","type":"address"},{"internalType":"bool","name":"isAdmin","type":"bool"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"bool","name":"deprecated_","type":"bool"}],"name":"setDeprecated","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[],"name":"swapRouter","outputs":[{"internalType":"contract ISwapRouter","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"tokensDeployedByUsers","outputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"positionId","type":"uint256"},{"internalType":"address","name":"locker","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[],"name":"uniswapV3Factory","outputs":[{"internalType":"contract IUniswapV3Factory","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"newLocker","type":"address"}],"name":"updateLiquidityLocker","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"newVault","type":"address"}],"name":"updateVault","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[],"name":"vault","outputs":[{"internalType":"contract IClankerVault","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"weth","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}
 ]
 MONITORED_CHAINS = {
     "base": "Base",
@@ -139,6 +172,9 @@ WETH_ABI = [
 ]
 
 weth = w3.eth.contract(address=config.WETH_ADDRESS, abi=WETH_ABI)
+
+# Ajout de la variable d'environnement pour QuickNode WebSocket
+QUICKNODE_WSS = os.getenv('QUICKNODE_WSS')
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -633,15 +669,21 @@ class ClankerMonitor(commands.Cog):
         self.is_active = True
         self.premium_only = False
         self.bankr_enabled = True
-        self.img_required = False  # Nouvelle variable pour le filtre d'image
+        self.img_required = False
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 5000
-        
-        # Charger les FIDs bannis et whitelistés au démarrage
         logger.info("Loading banned and whitelisted FIDs...")
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
         logger.info(f"Loaded {len(self.banned_fids)} banned FIDs and {len(self.whitelisted_fids)} whitelisted FIDs")
+        # --- Ajout Web3 WebSocket et contrat factory ---
+        self.w3_ws = Web3(Web3.WebsocketProvider(QUICKNODE_WSS))
+        self.w3_ws.middleware_onion.inject(geth_poa_middleware, layer=0)
+        self.clanker_factory = self.w3_ws.eth.contract(
+            address=Web3.to_checksum_address(CLANKER_FACTORY_ADDRESS),
+            abi=CLANKER_FACTORY_ABI
+        )
+        # ---
 
     def _load_seen_tokens(self) -> Set[str]:
         """Load previously seen Clanker token addresses from file."""
@@ -1337,57 +1379,59 @@ class ClankerMonitor(commands.Cog):
         if not self.channel:
             self.channel = self.bot.get_channel(CHANNEL_ID)
 
-    @tasks.loop(seconds=POLL_INTERVAL)
-    async def monitor_clanker(self):
-        """Monitor for new Clanker token deployments."""
-        if not self.is_active:
-            return
-
-        try:
-            if not self.channel:
-                self.channel = self.bot.get_channel(CHANNEL_ID)
-                if not self.channel:
-                    logger.error("Could not find channel for Clanker notifications")
-                    return
-
-            # Fetch latest Clanker deployments with timeout and SSL verification
-            async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
-                try:
-                    response = await client.get(f"{CLANKER_API_URL}/tokens", params={"page": 1, "sort": "desc"})
-                    response.raise_for_status()
-                    data = response.json()
-
-                    if not isinstance(data, dict) or "data" not in data:
-                        logger.error("Invalid response format from Clanker API")
-                        return
-
-                    tokens = data["data"]
-                    for token in tokens:
-                        # LOG DEBUG pour chaque token reçu
-                        social_context = token.get('social_context', {})
-                        logger.info(f"[DEBUG CLANKER] contract_address={token.get('contract_address')}, cast_hash={token.get('cast_hash')}, username={social_context.get('username')}, platform={social_context.get('platform')}, interface={social_context.get('interface')}, token={token}")
-                        contract_address = token.get('contract_address')
-                        if contract_address and contract_address not in self.seen_tokens:
-                            await self._send_clanker_notification(token, self.channel)
-                            self.seen_tokens.add(contract_address)
-                            self._save_seen_tokens()
-
-                except httpx.ConnectError as e:
-                    logger.error(f"Connection error to Clanker API: {e}")
-                except httpx.TimeoutException as e:
-                    logger.error(f"Timeout while connecting to Clanker API: {e}")
-                except httpx.HTTPStatusError as e:
-                    logger.error(f"HTTP error from Clanker API: {e}")
-                except json.JSONDecodeError as e:
-                    logger.error(f"Invalid JSON response from Clanker API: {e}")
-
-        except Exception as e:
-            logger.error(f"Error monitoring Clanker: {e}")
-
-    @monitor_clanker.before_loop
-    async def before_monitor_clanker(self):
-        """Wait for bot to be ready before starting the Clanker monitoring loop."""
+    async def listen_onchain_clanker(self):
         await self.bot.wait_until_ready()
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
+        channel = self.channel
+        if not channel:
+            logger.error("Could not find channel for Clanker notifications")
+            return
+        # Création du filtre d'event TokenCreated
+        event_filter = self.clanker_factory.events.TokenCreated.create_filter(fromBlock='latest')
+        logger.info("Started on-chain Clanker event listener")
+        while True:
+            try:
+                for event in event_filter.get_new_entries():
+                    token_address = event['args']['tokenAddress']
+                    tx_hash = event['transactionHash']
+                    tx = self.w3_ws.eth.get_transaction(tx_hash)
+                    # Décodage des input data
+                    try:
+                        func_obj, func_args = self.clanker_factory.decode_function_input(tx['input'])
+                        token_config = func_args['deploymentConfig']['tokenConfig']
+                        name = token_config['name']
+                        symbol = token_config['symbol']
+                        image = token_config['image']
+                        metadata = token_config['metadata']
+                        context = token_config['context']
+                        # Extraction du FID depuis le context (JSON)
+                        fid = None
+                        try:
+                            context_json = json.loads(context)
+                            fid = context_json.get('id')
+                        except Exception:
+                            pass
+                        # Envoie l'alerte Discord
+                        embed = discord.Embed(
+                            title="🆕 Nouveau Token Clanker (on-chain)",
+                            color=discord.Color.purple(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        embed.add_field(name="Nom du Token", value=name, inline=True)
+                        embed.add_field(name="Ticker", value=symbol, inline=True)
+                        embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
+                        if image:
+                            embed.set_thumbnail(url=image)
+                        if fid:
+                            embed.add_field(name="FID", value=fid, inline=True)
+                        await channel.send(embed=embed)
+                        logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
+                    except Exception as e:
+                        logger.error(f"Error decoding input data: {e}")
+            except Exception as e:
+                logger.error(f"Error in on-chain Clanker event loop: {e}")
+            await asyncio.sleep(2)
 
     @commands.command()
     async def volume(self, ctx, contract: str):
@@ -2441,6 +2485,8 @@ class Bot(commands.Bot):
         clanker_monitor.monitor_clanker.start()
         clanker_monitor.monitor_clanker_volumes.start()
         # snipe_monitor.monitor_snipes.start()  # Cette ligne est supprimée car nous n'utilisons plus monitor_snipes
+        # Lancer la tâche d'écoute on-chain
+        asyncio.create_task(clanker_monitor.listen_onchain_clanker())
 
     async def on_ready(self):
         """Called when the bot is ready."""
