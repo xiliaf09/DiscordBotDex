@@ -1390,6 +1390,8 @@ class ClankerMonitor(commands.Cog):
         # Création du filtre d'event TokenCreated
         event_filter = self.clanker_factory.events.TokenCreated.create_filter(fromBlock='latest')
         logger.info("Started on-chain Clanker event listener")
+        # Récupération du SnipeMonitor pour accès aux snipes
+        snipe_monitor = self.bot.get_cog('SnipeMonitor')
         while True:
             try:
                 for event in event_filter.get_new_entries():
@@ -1409,7 +1411,7 @@ class ClankerMonitor(commands.Cog):
                         fid = None
                         try:
                             context_json = json.loads(context)
-                            fid = context_json.get('id')
+                            fid = str(context_json.get('id'))
                         except Exception:
                             pass
                         # Envoie l'alerte Discord
@@ -1427,6 +1429,26 @@ class ClankerMonitor(commands.Cog):
                             embed.add_field(name="FID", value=fid, inline=True)
                         await channel.send(embed=embed)
                         logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
+                        # Déclenchement du snipe instantané si FID match
+                        if snipe_monitor and fid and fid in snipe_monitor.snipe_targets:
+                            snipe = snipe_monitor.snipe_targets[fid]
+                            if snipe['status'] == 'pending':
+                                success = await snipe_monitor.send_buy_webhook(token_address, snipe['amount'], snipe['gas_fees'])
+                                snipe['status'] = 'executed'
+                                snipe_monitor.snipe_targets[fid] = snipe
+                                snipe_channel = self.bot.get_channel(snipe['channel_id'])
+                                if snipe_channel:
+                                    snipe_embed = discord.Embed(
+                                        title="🎯 Snipe Exécuté (on-chain instantané)",
+                                        description=f"Token Clanker trouvé pour le FID: `{fid}`",
+                                        color=discord.Color.blue()
+                                    )
+                                    snipe_embed.add_field(name="Adresse", value=token_address, inline=True)
+                                    snipe_embed.add_field(name="Montant", value=f"{snipe['amount']} ETH", inline=True)
+                                    snipe_embed.add_field(name="Gas Fees", value=f"{snipe['gas_fees']} ETH", inline=True)
+                                    snipe_embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
+                                    await snipe_channel.send(embed=snipe_embed)
+                                logger.info(f"Snipe instantané exécuté pour FID {fid} sur {token_address} (webhook: {success})")
                     except Exception as e:
                         logger.error(f"Error decoding input data: {e}")
             except Exception as e:
