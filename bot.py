@@ -1414,6 +1414,15 @@ class ClankerMonitor(commands.Cog):
                             fid = str(context_json.get('id'))
                         except Exception:
                             pass
+                        # --- Filtrage banlist/whitelist ---
+                        if fid:
+                            if fid in self.banned_fids:
+                                logger.info(f"On-chain alert ignorée : FID {fid} banni.")
+                                continue
+                            if self.premium_only and fid not in self.whitelisted_fids:
+                                logger.info(f"On-chain alert ignorée : FID {fid} non whitelisté en mode premium_only.")
+                                continue
+                        # ---
                         # Envoie l'alerte Discord
                         embed = discord.Embed(
                             title="🆕 Nouveau Token Clanker (on-chain)",
