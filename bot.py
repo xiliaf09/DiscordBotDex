@@ -2177,6 +2177,98 @@ class ClankerMonitor(commands.Cog):
                 await self.channel.send(embed=embed)
             return False
 
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def deployclanker(self, ctx, name: str, symbol: str, fid: str, image: str, devbuy_eth: float = 0):
+        """
+        Déploie un token Clanker on-chain.
+        Usage : !deployclanker "Nom" "TICKER" "FID" "url_image" montant_eth
+        """
+        try:
+            import binascii
+            # Salt unique (32 bytes)
+            salt_bytes = os.urandom(32)
+            # Metadata JSON
+            metadata = json.dumps({
+                "description": f"Token {name} déployé via Discord",
+                "socialMediaUrls": [],
+                "auditUrls": []
+            })
+            # Context JSON
+            context = json.dumps({
+                "interface": "clanker.world",
+                "platform": "farcaster",
+                "messageId": "",
+                "id": fid
+            })
+            # TokenConfig
+            token_config = (
+                name,
+                symbol,
+                salt_bytes,
+                image,
+                metadata,
+                context,
+                8453  # Base chainId
+            )
+            # VaultConfig (pas de vesting par défaut)
+            vault_config = (
+                0,  # percentage
+                0   # duration
+            )
+            # PoolConfig
+            pool_config = (
+                Web3.to_checksum_address(config.WETH_ADDRESS),
+                -230400  # tickIfToken0IsNewToken
+            )
+            # InitialBuyConfig
+            initial_buy_config = (
+                10000,  # pool fee (1%)
+                0       # min out
+            )
+            # RewardsConfig
+            creator_admin = Web3.to_checksum_address(config.WALLET_ADDRESS)
+            interface_admin = Web3.to_checksum_address("0xEea96d959963EaB488A3d4B7d5d347785cf1Eab8")
+            interface_reward = Web3.to_checksum_address("0x1eaf444ebDf6495C57aD52A04C61521bBf564ace")
+            rewards_config = (
+                8000,  # 80% creator reward
+                creator_admin,
+                creator_admin,
+                interface_admin,
+                interface_reward
+            )
+            deployment_config = (
+                token_config,
+                vault_config,
+                pool_config,
+                initial_buy_config,
+                rewards_config
+            )
+            contract = self.clanker_factory
+            value = self.w3_ws.to_wei(devbuy_eth, 'ether') if devbuy_eth > 0 else 0
+            tx = contract.functions.deployToken(deployment_config)
+            tx_dict = tx.build_transaction({
+                'from': creator_admin,
+                'value': value,
+                'nonce': self.w3_ws.eth.get_transaction_count(creator_admin),
+                'gas': 2_500_000,
+                'gasPrice': self.w3_ws.eth.gas_price
+            })
+            signed = self.w3_ws.eth.account.sign_transaction(tx_dict, config.WALLET_PRIVATE_KEY)
+            tx_hash = self.w3_ws.eth.send_raw_transaction(signed.rawTransaction)
+            await ctx.send(f"✅ Transaction envoyée ! Hash : `{tx_hash.hex()}`. Attente du déploiement...")
+            receipt = self.w3_ws.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
+            logs = contract.events.TokenCreated().process_receipt(receipt)
+            if logs:
+                token_addr = logs[0]['args']['tokenAddress']
+                clanker_link = f"https://www.clanker.world/clanker/{token_addr}"
+                await ctx.send(f"🎉 Token déployé ! Adresse : `{token_addr}`\nLien Clanker : {clanker_link}")
+            else:
+                await ctx.send("⚠️ Token déployé mais impossible de trouver l'adresse dans les logs.")
+        except Exception as e:
+            logger.error(f"[DEPLOY] Erreur lors du déploiement : {e}")
+            await ctx.send(f"❌ Erreur lors du déploiement : {e}")
+
 class SnipeMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
