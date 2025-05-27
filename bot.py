@@ -486,8 +486,8 @@ class TokenMonitor(commands.Cog):
             view = discord.ui.View()
             
             # Add Photon button if pool address is available
-            if token.get('pool_address'):
-                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token['pool_address']}"
+            if token.get('contract_address'):
+                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token['contract_address']}"
                 photon_button = discord.ui.Button(
                     style=discord.ButtonStyle.primary,
                     label="Voir sur Photon",
@@ -1142,31 +1142,13 @@ class ClankerMonitor(commands.Cog):
                 inline=True
             )
 
-            # Add FID if available and create Blacklist button
+            # Add FID if available
             if fid:
                 embed.add_field(
                     name="FID",
                     value=fid + (" 🥇" if is_premium else ""),
                     inline=True
                 )
-                # Create button view
-                view = discord.ui.View()
-                blacklist_button = discord.ui.Button(
-                    style=discord.ButtonStyle.danger,
-                    label="Blacklist",
-                    custom_id=f"blacklist_{fid}"
-                )
-                view.add_item(blacklist_button)
-                # Ajout du bouton Remove Whitelist si premium
-                if is_premium:
-                    remove_whitelist_button = discord.ui.Button(
-                        style=discord.ButtonStyle.secondary,
-                        label="Remove Whitelist",
-                        custom_id=f"removewhitelist_{fid}"
-                    )
-                    view.add_item(remove_whitelist_button)
-            else:
-                view = None
 
             embed.add_field(
                 name="Contract",
@@ -1181,16 +1163,6 @@ class ClankerMonitor(commands.Cog):
                     value=f"`{token_data['pool_address']}`",
                     inline=False
                 )
-                # Ajout du bouton Photon
-                if view is None:
-                    view = discord.ui.View()
-                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token_data['pool_address']}"
-                photon_button = discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="Voir sur Photon",
-                    url=photon_url
-                )
-                view.add_item(photon_button)
 
             # Add deployment tweet/cast link
             embed.add_field(
@@ -1223,7 +1195,7 @@ class ClankerMonitor(commands.Cog):
                 embed.add_field(
                     name="Username",
                     value=f"[@{username}](https://warpcast.com/{username})",
-                inline=True
+                    inline=True
                 )
 
             # Add market cap if available
@@ -1234,11 +1206,39 @@ class ClankerMonitor(commands.Cog):
                     inline=True
                 )
 
-            # Send message with button if FID is available or Photon button exists
-            if view:
-                await channel.send(embed=embed, view=view)
-            else:
-                await channel.send(embed=embed)
+            # Créer la vue avec les boutons
+            view = discord.ui.View()
+
+            # Ajouter le bouton Ban si FID disponible
+            if fid:
+                ban_button = discord.ui.Button(
+                    style=discord.ButtonStyle.danger,
+                    label="Ban",
+                    custom_id=f"blacklist_{fid}"
+                )
+                view.add_item(ban_button)
+
+                # Ajouter le bouton Remove Whitelist si token premium
+                if is_premium:
+                    remove_whitelist_button = discord.ui.Button(
+                        style=discord.ButtonStyle.secondary,
+                        label="Remove Whitelist",
+                        custom_id=f"removewhitelist_{fid}"
+                    )
+                    view.add_item(remove_whitelist_button)
+
+            # Ajouter le bouton Photon si pool address disponible
+            if token_data.get('pool_address'):
+                photon_url = f"https://photon-base.tinyastro.io/en/lp/{token_data['pool_address']}"
+                photon_button = discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Voir sur Photon",
+                    url=photon_url
+                )
+                view.add_item(photon_button)
+
+            # Envoyer le message avec les boutons
+            await channel.send(embed=embed, view=view)
 
             logger.info(f"Clanker notification sent for token: {token_data.get('name')}")
 
