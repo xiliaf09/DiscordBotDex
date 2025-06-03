@@ -1387,87 +1387,122 @@ class ClankerMonitor(commands.Cog):
         if not channel:
             logger.error("Could not find channel for Clanker notifications")
             return
-        # Création du filtre d'event TokenCreated
-        event_filter = self.clanker_factory.events.TokenCreated.create_filter(fromBlock='latest')
-        logger.info("Started on-chain Clanker event listener")
-        # Récupération du SnipeMonitor pour accès aux snipes
-        snipe_monitor = self.bot.get_cog('SnipeMonitor')
-        while True:
+
+        while True:  # Boucle principale de reconnexion
             try:
-                for event in event_filter.get_new_entries():
-                    token_address = event['args']['tokenAddress']
-                    tx_hash = event['transactionHash']
-                    tx = self.w3_ws.eth.get_transaction(tx_hash)
-                    # Décodage des input data
+                # Création du filtre d'event TokenCreated
+                event_filter = self.clanker_factory.events.TokenCreated.create_filter(fromBlock='latest')
+                logger.info("Started on-chain Clanker event listener")
+
+                # Récupération du SnipeMonitor pour accès aux snipes
+                snipe_monitor = self.bot.get_cog('SnipeMonitor')
+
+                while True:  # Boucle de lecture des événements
                     try:
-                        func_obj, func_args = self.clanker_factory.decode_function_input(tx['input'])
-                        token_config = func_args['deploymentConfig']['tokenConfig']
-                        name = token_config['name']
-                        symbol = token_config['symbol']
-                        image = token_config['image']
-                        metadata = token_config['metadata']
-                        context = token_config['context']
-                        # Extraction du FID depuis le context (JSON)
-                        fid = None
-                        try:
-                            context_json = json.loads(context)
-                            fid = str(context_json.get('id'))
-                        except Exception:
-                            pass
-                        # --- Filtrage banlist/whitelist ---
-                        if fid:
-                            if fid in self.banned_fids:
-                                logger.info(f"On-chain alert ignorée : FID {fid} banni.")
-                                continue
-                            if self.premium_only and fid not in self.whitelisted_fids:
-                                logger.info(f"On-chain alert ignorée : FID {fid} non whitelisté en mode premium_only.")
-                                continue
-                        # ---
-                        # Vérifier si le FID est whitelisté
-                        is_premium = fid and fid in self.whitelisted_fids
-                        # Envoie l'alerte Discord
-                        embed = discord.Embed(
-                            title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
-                            color=discord.Color.gold() if is_premium else discord.Color.purple(),
-                            timestamp=datetime.now(timezone.utc)
-                        )
-                        embed.add_field(name="Nom du Token", value=name, inline=True)
-                        embed.add_field(name="Ticker", value=symbol, inline=True)
-                        embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
-                        # Ajout du lien Clanker.world
-                        clanker_link = f"https://www.clanker.world/clanker/{token_address}"
-                        embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
-                        if image:
-                            embed.set_thumbnail(url=image)
-                        if fid:
-                            embed.add_field(name="FID", value=f"{fid} 🥇" if is_premium else fid, inline=True)
-                        await channel.send(embed=embed)
-                        logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
-                        # Déclenchement du snipe instantané si FID match
-                        if snipe_monitor and fid and fid in snipe_monitor.snipe_targets:
-                            snipe = snipe_monitor.snipe_targets[fid]
-                            if snipe['status'] == 'pending':
-                                success = await snipe_monitor.send_buy_webhook(token_address, snipe['amount'], snipe['gas_fees'])
-                                snipe['status'] = 'executed'
-                                snipe_monitor.snipe_targets[fid] = snipe
-                                snipe_channel = self.bot.get_channel(snipe['channel_id'])
-                                if snipe_channel:
-                                    snipe_embed = discord.Embed(
-                                        title="🎯 Snipe Exécuté (on-chain instantané)",
-                                        description=f"Token Clanker trouvé pour le FID: `{fid}`",
-                                        color=discord.Color.blue()
+                        for event in event_filter.get_new_entries():
+                            token_address = event['args']['tokenAddress']
+                            tx_hash = event['transactionHash']
+                            tx = self.w3_ws.eth.get_transaction(tx_hash)
+                            # Décodage des input data
+                            try:
+                                func_obj, func_args = self.clanker_factory.decode_function_input(tx['input'])
+                                token_config = func_args['deploymentConfig']['tokenConfig']
+                                name = token_config['name']
+                                symbol = token_config['symbol']
+                                image = token_config['image']
+                                metadata = token_config['metadata']
+                                context = token_config['context']
+                                # Extraction du FID depuis le context (JSON)
+                                fid = None
+                                try:
+                                    context_json = json.loads(context)
+                                    fid = str(context_json.get('id'))
+                                except Exception:
+                                    pass
+                                # --- Filtrage banlist/whitelist ---
+                                if fid:
+                                    if fid in self.banned_fids:
+                                        logger.info(f"On-chain alert ignorée : FID {fid} banni.")
+                                        continue
+                                    if self.premium_only and fid not in self.whitelisted_fids:
+                                        logger.info(f"On-chain alert ignorée : FID {fid} non whitelisté en mode premium_only.")
+                                        continue
+                                # ---
+                                # Vérifier si le FID est whitelisté
+                                is_premium = fid and fid in self.whitelisted_fids
+                                # Envoie l'alerte Discord
+                                embed = discord.Embed(
+                                    title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
+                                    color=discord.Color.gold() if is_premium else discord.Color.purple(),
+                                    timestamp=datetime.now(timezone.utc)
+                                )
+                                embed.add_field(name="Nom du Token", value=name, inline=True)
+                                embed.add_field(name="Ticker", value=symbol, inline=True)
+                                embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
+                                # Ajout du lien Clanker.world
+                                clanker_link = f"https://www.clanker.world/clanker/{token_address}"
+                                embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                                if image:
+                                    embed.set_thumbnail(url=image)
+                                if fid:
+                                    embed.add_field(name="FID", value=f"{fid} 🥇" if is_premium else fid, inline=True)
+                                # Ajout des boutons Ban, Remove Whitelist et Photon
+                                view = discord.ui.View()
+                                if fid:
+                                    ban_button = discord.ui.Button(
+                                        style=discord.ButtonStyle.danger,
+                                        label="Ban",
+                                        custom_id=f"blacklist_{fid}"
                                     )
-                                    snipe_embed.add_field(name="Adresse", value=token_address, inline=True)
-                                    snipe_embed.add_field(name="Montant", value=f"{snipe['amount']} ETH", inline=True)
-                                    snipe_embed.add_field(name="Gas Fees", value=f"{snipe['gas_fees']} ETH", inline=True)
-                                    snipe_embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
-                                    await snipe_channel.send(embed=snipe_embed)
-                                logger.info(f"Snipe instantané exécuté pour FID {fid} sur {token_address} (webhook: {success})")
+                                    view.add_item(ban_button)
+                                if is_premium:
+                                    remove_whitelist_button = discord.ui.Button(
+                                        style=discord.ButtonStyle.danger,
+                                        label="Remove Whitelist",
+                                        custom_id=f"removewhitelist_{fid}"
+                                    )
+                                    view.add_item(remove_whitelist_button)
+                                photon_button = discord.ui.Button(
+                                    style=discord.ButtonStyle.primary,
+                                    label="Voir sur Photon",
+                                    url=f"https://photon-base.tinyastro.io/en/lp/{token_address}"
+                                )
+                                view.add_item(photon_button)
+                                await channel.send(embed=embed, view=view)
+                                logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
+                                # Déclenchement du snipe instantané si FID match
+                                if snipe_monitor and fid and fid in snipe_monitor.snipe_targets:
+                                    snipe = snipe_monitor.snipe_targets[fid]
+                                    if snipe['status'] == 'pending':
+                                        success = await snipe_monitor.send_buy_webhook(token_address, snipe['amount'], snipe['gas_fees'])
+                                        snipe['status'] = 'executed'
+                                        snipe_monitor.snipe_targets[fid] = snipe
+                                        snipe_channel = self.bot.get_channel(snipe['channel_id'])
+                                        if snipe_channel:
+                                            snipe_embed = discord.Embed(
+                                                title="🎯 Snipe Exécuté (on-chain instantané)",
+                                                description=f"Token Clanker trouvé pour le FID: `{fid}`",
+                                                color=discord.Color.blue()
+                                            )
+                                            snipe_embed.add_field(name="Adresse", value=token_address, inline=True)
+                                            snipe_embed.add_field(name="Montant", value=f"{snipe['amount']} ETH", inline=True)
+                                            snipe_embed.add_field(name="Gas Fees", value=f"{snipe['gas_fees']} ETH", inline=True)
+                                            snipe_embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
+                                            await snipe_channel.send(embed=snipe_embed)
+                                        logger.info(f"Snipe instantané exécuté pour FID {fid} sur {token_address} (webhook: {success})")
+                            except Exception as e:
+                                logger.error(f"Error decoding input data: {e}")
+                        await asyncio.sleep(2)
                     except Exception as e:
-                        logger.error(f"Error decoding input data: {e}")
+                        if "filter not found" in str(e):
+                            logger.warning("Filter expired, recreating...")
+                            break  # Sort de la boucle interne pour recréer le filtre
+                        else:
+                            logger.error(f"Error in on-chain Clanker event loop: {e}")
+                            await asyncio.sleep(5)
             except Exception as e:
-                logger.error(f"Error in on-chain Clanker event loop: {e}")
-            await asyncio.sleep(2)
+                logger.error(f"Error creating event filter: {e}")
+                await asyncio.sleep(5)  # Attendre avant de réessayer de créer le filtre
 
     @commands.command()
     async def volume(self, ctx, contract: str):
