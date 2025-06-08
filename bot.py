@@ -1310,11 +1310,11 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le seuil doit être strictement positif.")
             return
         self.default_volume_threshold = volume_usd
-        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 5 minutes pour tous les tokens.")
+        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 3 secondes pour tous les tokens.")
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(seconds=3)  # Changé de 60 à 3 secondes
     async def monitor_clanker_volumes(self):
-        """Surveille le volume sur 5 minutes des tokens Clanker détectés."""
+        """Surveille le volume sur 3 secondes des tokens Clanker détectés."""
         if not self.is_active or not self.channel:
             return
         to_remove = []
@@ -1332,20 +1332,20 @@ class ClankerMonitor(commands.Cog):
                         continue
                     # On prend le premier pair trouvé
                     pair = pairs[0]
-                    volume_5m = float(pair.get('volume', {}).get('m5', 0))
+                    volume_3s = float(pair.get('volume', {}).get('m5', 0))  # On utilise toujours m5 car c'est la plus petite période disponible
                     symbol = pair.get('baseToken', {}).get('symbol', contract_address)
                     name = pair.get('baseToken', {}).get('name', contract_address)
                     threshold = self.default_volume_threshold
-                    if volume_5m >= threshold:
+                    if volume_3s >= threshold:
                         # Envoie une alerte Discord
                         embed = discord.Embed(
                             title="🚨 Volume Clanker élevé!",
-                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 5 minutes!",
+                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 3 secondes!",
                             color=discord.Color.red(),
                             timestamp=datetime.now(timezone.utc)
                         )
                         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
-                        embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
+                        embed.add_field(name="Volume (3s)", value=f"${volume_3s:,.2f}", inline=False)
                         embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
                         # Ajout du bouton Photon si pool address
                         view = None
