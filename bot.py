@@ -1313,7 +1313,7 @@ class ClankerMonitor(commands.Cog):
         self.default_volume_threshold = volume_usd
         await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 5 minutes pour tous les tokens.")
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
         logger.info("[VOLUME CHECK] Tick de surveillance volume Clanker")
         if not self.is_active or not self.channel:
