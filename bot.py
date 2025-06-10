@@ -1310,7 +1310,7 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le seuil doit être strictement positif.")
             return
         self.default_volume_threshold = volume_usd
-        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 3 secondes pour tous les tokens.")
+        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 5 minutes pour tous les tokens.")
 
     @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
@@ -1342,7 +1342,7 @@ class ClankerMonitor(commands.Cog):
                     symbol = pair.get('baseToken', {}).get('symbol', contract_address)
                     name = pair.get('baseToken', {}).get('name', contract_address)
                     threshold = self.default_volume_threshold
-
+                    logger.info(f"[VOLUME CHECK] Token {name} ({symbol}) {contract_address} - Volume 5m: {volume_5m} USD (seuil: {threshold})")
                     if volume_5m >= threshold:
                         # Envoie une alerte Discord
                         embed = discord.Embed(
