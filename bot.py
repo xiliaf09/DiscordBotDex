@@ -1248,6 +1248,7 @@ class ClankerMonitor(commands.Cog):
                     'first_seen': time.time(),
                     'alerted': False
                 }
+                logger.info(f"[VOLUME TRACK] Ajout du token {contract_address.lower()} à la surveillance volume")
 
         except Exception as e:
             logger.error(f"Error sending Clanker notification: {e}")
@@ -1314,7 +1315,7 @@ class ClankerMonitor(commands.Cog):
 
     @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
-        """Surveille le volume sur 5 minutes des tokens Clanker détectés pendant une heure."""
+        logger.info("[VOLUME CHECK] Tâche monitor_clanker_volumes tick")
         if not self.is_active or not self.channel:
             return
         to_remove = []
