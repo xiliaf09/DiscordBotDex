@@ -1312,15 +1312,21 @@ class ClankerMonitor(commands.Cog):
         self.default_volume_threshold = volume_usd
         await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 3 secondes pour tous les tokens.")
 
-    @tasks.loop(seconds=3)  # Changé de 60 à 3 secondes
+    @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
-        """Surveille le volume sur 3 secondes des tokens Clanker détectés."""
+        """Surveille le volume sur 5 minutes des tokens Clanker détectés pendant une heure."""
         if not self.is_active or not self.channel:
             return
         to_remove = []
         for contract_address, info in list(self.tracked_clanker_tokens.items()):
+            # Vérifie si une heure s'est écoulée depuis la première détection
+            if time.time() - info['first_seen'] > 3600:  # 3600 secondes = 1 heure
+                to_remove.append(contract_address)
+                continue
+
             if info.get('alerted'):
                 continue  # Déjà alerté
+
             # Appel Dexscreener
             url = f"https://api.dexscreener.com/latest/dex/tokens/{contract_address}"
             try:
@@ -1332,21 +1338,23 @@ class ClankerMonitor(commands.Cog):
                         continue
                     # On prend le premier pair trouvé
                     pair = pairs[0]
-                    volume_3s = float(pair.get('volume', {}).get('m5', 0))  # On utilise toujours m5 car c'est la plus petite période disponible
+                    volume_5m = float(pair.get('volume', {}).get('m5', 0))
                     symbol = pair.get('baseToken', {}).get('symbol', contract_address)
                     name = pair.get('baseToken', {}).get('name', contract_address)
                     threshold = self.default_volume_threshold
-                    if volume_3s >= threshold:
+
+                    if volume_5m >= threshold:
                         # Envoie une alerte Discord
                         embed = discord.Embed(
                             title="🚨 Volume Clanker élevé!",
-                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 3 secondes!",
+                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 5 minutes!",
                             color=discord.Color.red(),
                             timestamp=datetime.now(timezone.utc)
                         )
                         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
-                        embed.add_field(name="Volume (3s)", value=f"${volume_3s:,.2f}", inline=False)
+                        embed.add_field(name="Volume (5m)", value=f"${volume_5m:,.2f}", inline=False)
                         embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
+                        
                         # Ajout du bouton Photon si pool address
                         view = None
                         pool_address = pair.get('pairAddress') or pair.get('poolAddress') or pair.get('liquidity', {}).get('address')
@@ -1359,19 +1367,22 @@ class ClankerMonitor(commands.Cog):
                                 url=photon_url
                             )
                             view.add_item(photon_button)
+                        
                         if view:
                             await self.channel.send(embed=embed, view=view)
                         else:
                             await self.channel.send(embed=embed)
+                        
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
+                        logger.info(f"Alerte volume envoyée pour {contract_address}")
+
             except Exception as e:
                 logger.error(f"Erreur lors de la vérification du volume Dexscreener pour {contract_address}: {e}")
-        # Nettoyage optionnel: on peut retirer les tokens alertés depuis longtemps
-        for contract_address, info in list(self.tracked_clanker_tokens.items()):
-            if info.get('alerted') and (time.time() - info['first_seen'] > 3600):
-                to_remove.append(contract_address)
+
+        # Supprime les tokens qui ont dépassé une heure
         for contract_address in to_remove:
             del self.tracked_clanker_tokens[contract_address]
+            logger.info(f"Token {contract_address} retiré de la surveillance après une heure")
 
     @monitor_clanker_volumes.before_loop
     async def before_monitor_clanker_volumes(self):
