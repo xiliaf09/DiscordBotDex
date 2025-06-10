@@ -1458,6 +1458,12 @@ class ClankerMonitor(commands.Cog):
                                 view.add_item(photon_button)
                                 await channel.send(embed=embed, view=view)
                                 logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address}")
+                                # Ajout à la surveillance volume
+                                self.tracked_clanker_tokens[token_address.lower()] = {
+                                    'first_seen': time.time(),
+                                    'alerted': False
+                                }
+                                logger.info(f"[VOLUME TRACK] Ajout du token {token_address.lower()} à la surveillance volume (on-chain)")
                                 # Déclenchement du snipe instantané si FID match
                                 if snipe_monitor and fid and fid in snipe_monitor.snipe_targets:
                                     snipe = snipe_monitor.snipe_targets[fid]
