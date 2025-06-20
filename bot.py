@@ -1114,6 +1114,119 @@ class ClankerMonitor(commands.Cog):
             else:
                 await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker.")
 
+    @commands.command()
+    async def lastclankerv4(self, ctx):
+        """Fetch and display the latest token from Clanker V4 factory"""
+        try:
+            # Send initial message
+            status_msg = await ctx.send("🔍 Recherche du dernier token Clanker V4...")
+            
+            # Get the latest block to find recent V4 deployments
+            latest_block = self.w3_ws.eth.block_number
+            
+            # Search for recent TokenCreated events from V4 factory
+            event_filter = self.clanker_factory_v4.events.TokenCreated.create_filter(
+                fromBlock=latest_block - 1000,  # Search last 1000 blocks
+                toBlock='latest'
+            )
+            
+            events = event_filter.get_all_entries()
+            
+            if not events:
+                await status_msg.edit(content="❌ Aucun token V4 récent trouvé dans les derniers blocs.")
+                return
+            
+            # Get the most recent event
+            latest_event = events[-1]
+            token_address = latest_event['args']['tokenAddress']
+            tx_hash = latest_event['transactionHash']
+            tx = self.w3_ws.eth.get_transaction(tx_hash)
+            
+            # Decode the input data
+            try:
+                func_obj, func_args = self.clanker_factory_v4.decode_function_input(tx['input'])
+                token_config = func_args['deploymentConfig']['tokenConfig']
+                name = token_config['name']
+                symbol = token_config['symbol']
+                image = token_config['image']
+                metadata = token_config['metadata']
+                context = token_config['context']
+                
+                # Extract FID from context
+                fid = None
+                try:
+                    context_json = json.loads(context)
+                    fid = str(context_json.get('id'))
+                except Exception:
+                    pass
+                
+                # Check if FID is whitelisted
+                is_premium = fid and fid in self.whitelisted_fids
+                
+                # Create embed
+                embed = discord.Embed(
+                    title="🥇 Dernier Token Clanker V4 Premium" if is_premium else "🆕 Dernier Token Clanker V4",
+                    color=discord.Color.gold() if is_premium else discord.Color.purple(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                
+                embed.add_field(name="Nom du Token", value=name, inline=True)
+                embed.add_field(name="Ticker", value=symbol, inline=True)
+                embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
+                
+                # Add Clanker.world link
+                clanker_link = f"https://www.clanker.world/clanker/{token_address}"
+                embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                
+                if image:
+                    embed.set_thumbnail(url=image)
+                
+                if fid:
+                    embed.add_field(name="FID", value=f"{fid} 🥇" if is_premium else fid, inline=True)
+                
+                # Create view with buttons
+                view = discord.ui.View()
+                
+                if fid:
+                    ban_button = discord.ui.Button(
+                        style=discord.ButtonStyle.danger,
+                        label="Ban",
+                        custom_id=f"blacklist_{fid}"
+                    )
+                    view.add_item(ban_button)
+                
+                if is_premium:
+                    remove_whitelist_button = discord.ui.Button(
+                        style=discord.ButtonStyle.danger,
+                        label="Remove Whitelist",
+                        custom_id=f"removewhitelist_{fid}"
+                    )
+                    view.add_item(remove_whitelist_button)
+                
+                # Add Definitive chart button for V4
+                definitive_url = f"https://app.definitive.fi/{token_address}/base"
+                chart_button = discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Voir la Chart",
+                    url=definitive_url
+                )
+                view.add_item(chart_button)
+                
+                await status_msg.delete()
+                await ctx.send(embed=embed, view=view)
+                logger.info(f"Last Clanker V4 command executed for {name} ({symbol}) {token_address}")
+                
+            except Exception as e:
+                logger.error(f"Error decoding V4 input data in lastclankerv4: {e}")
+                await status_msg.edit(content="❌ Erreur lors du décodage des données du token V4.")
+                
+        except Exception as e:
+            logger.error(f"Error fetching latest Clanker V4 token: {e}")
+            if status_msg:
+                await status_msg.edit(content="❌ Erreur lors de la recherche du dernier token Clanker V4.")
+            else:
+                await ctx.send("❌ Erreur lors de la recherche du dernier token Clanker V4.")
+
     async def _send_clanker_notification(self, token_data: Dict, channel: discord.TextChannel):
         """Send a notification for a new Clanker token."""
         try:
@@ -1339,7 +1452,7 @@ class ClankerMonitor(commands.Cog):
                     await interaction.response.send_message(f"ℹ️ Le FID {fid} est déjà banni.", ephemeral=True)
                     return
 
-                # Check if FID is whitelisted
+                # Check if FID is whitelisté
                 if fid in self.whitelisted_fids:
                     await interaction.response.send_message(f"⚠️ Le FID {fid} est whitelisté et ne peut pas être banni.", ephemeral=True)
                     return
@@ -1647,8 +1760,8 @@ class ClankerMonitor(commands.Cog):
                                     view.add_item(remove_whitelist_button)
                                 photon_button = discord.ui.Button(
                                     style=discord.ButtonStyle.primary,
-                                    label="Voir sur Photon",
-                                    url=f"https://photon-base.tinyastro.io/en/lp/{token_address}"
+                                    label="Voir sur Definitive",
+                                    url=f"https://app.definitive.fi/{token_address}/base"
                                 )
                                 view.add_item(photon_button)
                                 await channel.send(embed=embed, view=view)
