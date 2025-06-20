@@ -46,6 +46,7 @@ BASESCAN_API_URL = "https://api.basescan.org/api"
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
 ROUTER_ADDRESS = "0x327df1e6de05895d2ab08513aadd9313fe505d86"
 CLANKER_FACTORY_ADDRESS = "0x2A787b2362021cC3eEa3C24C4748a6cD5B687382"
+CLANKER_FACTORY_V4_ADDRESS = "0xE85A59c628F7d27878ACeB4bf3b35733630083a9"
 CLANKER_FACTORY_ABI = [
     {"inputs":[{"internalType":"address","name":"owner_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},
     {"inputs":[],"name":"Deprecated","type":"error"},
@@ -98,6 +99,64 @@ CLANKER_FACTORY_ABI = [
     {"inputs":[{"internalType":"address","name":"newVault","type":"address"}],"name":"updateVault","outputs":[],"stateMutability":"nonpayable","type":"function"},
     {"inputs":[],"name":"vault","outputs":[{"internalType":"contract IClankerVault","name":"","type":"address"}],"stateMutability":"view","type":"function"},
     {"inputs":[],"name":"weth","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}
+]
+CLANKER_FACTORY_V4_ABI = [
+    {"inputs":[{"internalType":"address","name":"owner_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},
+    {"inputs":[],"name":"Deprecated","type":"error"},
+    {"inputs":[],"name":"ExtensionMsgValueMismatch","type":"error"},
+    {"inputs":[],"name":"ExtensionNotEnabled","type":"error"},
+    {"inputs":[],"name":"HookNotEnabled","type":"error"},
+    {"inputs":[],"name":"InvalidExtension","type":"error"},
+    {"inputs":[],"name":"InvalidHook","type":"error"},
+    {"inputs":[],"name":"InvalidLocker","type":"error"},
+    {"inputs":[],"name":"InvalidMevModule","type":"error"},
+    {"inputs":[],"name":"LockerNotEnabled","type":"error"},
+    {"inputs":[],"name":"MaxExtensionBpsExceeded","type":"error"},
+    {"inputs":[],"name":"MaxExtensionsExceeded","type":"error"},
+    {"inputs":[],"name":"MevModuleNotEnabled","type":"error"},
+    {"inputs":[],"name":"NotFound","type":"error"},
+    {"inputs":[],"name":"OnlyNonOriginatingChains","type":"error"},
+    {"inputs":[],"name":"OnlyOriginatingChain","type":"error"},
+    {"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},
+    {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},
+    {"inputs":[],"name":"ReentrancyGuardReentrantCall","type":"error"},
+    {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"SafeERC20FailedOperation","type":"error"},
+    {"inputs":[],"name":"TeamFeeRecipientNotSet","type":"error"},
+    {"inputs":[],"name":"Unauthorized","type":"error"},
+    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"address","name":"token","type":"address"},{"indexed":True,"internalType":"address","name":"recipient","type":"address"},{"indexed":False,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"ClaimTeamFees","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"extension","type":"address"},{"indexed":False,"internalType":"uint256","name":"extensionSupply","type":"uint256"},{"indexed":False,"internalType":"uint256","name":"msgValue","type":"uint256"}],"name":"ExtensionTriggered","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":True,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"address","name":"admin","type":"address"},{"indexed":False,"internalType":"bool","name":"enabled","type":"bool"}],"name":"SetAdmin","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"bool","name":"deprecated","type":"bool"}],"name":"SetDeprecated","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"extension","type":"address"},{"indexed":False,"internalType":"bool","name":"enabled","type":"bool"}],"name":"SetExtension","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"hook","type":"address"},{"indexed":False,"internalType":"bool","name":"enabled","type":"bool"}],"name":"SetHook","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"locker","type":"address"},{"indexed":False,"internalType":"address","name":"hook","type":"address"},{"indexed":False,"internalType":"bool","name":"enabled","type":"bool"}],"name":"SetLocker","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"mevModule","type":"address"},{"indexed":False,"internalType":"bool","name":"enabled","type":"bool"}],"name":"SetMevModule","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"oldTeamFeeRecipient","type":"address"},{"indexed":False,"internalType":"address","name":"newTeamFeeRecipient","type":"address"}],"name":"SetTeamFeeRecipient","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"msgSender","type":"address"},{"indexed":True,"internalType":"address","name":"tokenAddress","type":"address"},{"indexed":True,"internalType":"address","name":"tokenAdmin","type":"address"},{"indexed":False,"internalType":"string","name":"tokenImage","type":"string"},{"indexed":False,"internalType":"string","name":"tokenName","type":"string"},{"indexed":False,"internalType":"string","name":"tokenSymbol","type":"string"},{"indexed":False,"internalType":"string","name":"tokenMetadata","type":"string"},{"indexed":False,"internalType":"string","name":"tokenContext","type":"string"},{"indexed":False,"internalType":"int24","name":"startingTick","type":"int24"},{"indexed":False,"internalType":"address","name":"poolHook","type":"address"},{"indexed":False,"internalType":"PoolId","name":"poolId","type":"bytes32"},{"indexed":False,"internalType":"address","name":"pairedToken","type":"address"},{"indexed":False,"internalType":"address","name":"locker","type":"address"},{"indexed":False,"internalType":"address","name":"mevModule","type":"address"},{"indexed":False,"internalType":"uint256","name":"extensionsSupply","type":"uint256"},{"indexed":False,"internalType":"address[]","name":"extensions","type":"address[]"}],"name":"TokenCreated","type":"event"},
+    {"inputs":[],"name":"BPS","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"MAX_EXTENSIONS","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"MAX_EXTENSION_BPS","outputs":[{"internalType":"uint16","name":"","type":"uint16"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"TOKEN_SUPPLY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"admins","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"claimTeamFees","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"components":[{"components":[{"internalType":"address","name":"tokenAdmin","type":"address"},{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"symbol","type":"string"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"string","name":"image","type":"string"},{"internalType":"string","name":"metadata","type":"string"},{"internalType":"string","name":"context","type":"string"},{"internalType":"uint256","name":"originatingChainId","type":"uint256"}],"internalType":"struct IClanker.TokenConfig","name":"tokenConfig","type":"tuple"},{"components":[{"internalType":"address","name":"hook","type":"address"},{"internalType":"address","name":"pairedToken","type":"address"},{"internalType":"int24","name":"tickIfToken0IsClanker","type":"int24"},{"internalType":"int24","name":"tickSpacing","type":"int24"},{"internalType":"bytes","name":"poolData","type":"bytes"}],"internalType":"struct IClanker.PoolConfig","name":"poolConfig","type":"tuple"},{"components":[{"internalType":"address","name":"locker","type":"address"},{"internalType":"address[]","name":"rewardAdmins","type":"address[]"},{"internalType":"address[]","name":"rewardRecipients","type":"address[]"},{"internalType":"uint16[]","name":"rewardBps","type":"uint16[]"},{"internalType":"int24[]","name":"tickLower","type":"int24[]"},{"internalType":"int24[]","name":"tickUpper","type":"int24[]"},{"internalType":"uint16[]","name":"positionBps","type":"uint16[]"},{"internalType":"bytes","name":"lockerData","type":"bytes"}],"internalType":"struct IClanker.LockerConfig","name":"lockerConfig","type":"tuple"},{"components":[{"internalType":"address","name":"mevModule","type":"address"},{"internalType":"bytes","name":"mevModuleData","type":"bytes"}],"internalType":"struct IClanker.MevModuleConfig","name":"mevModuleConfig","type":"tuple"},{"components":[{"internalType":"address","name":"extension","type":"address"},{"internalType":"uint256","name":"msgValue","type":"uint256"},{"internalType":"uint16","name":"extensionBps","type":"uint16"},{"internalType":"bytes","name":"extensionData","type":"bytes"}],"internalType":"struct IClanker.ExtensionConfig[]","name":"extensionConfigs","type":"tuple[]"}],"internalType":"struct IClanker.DeploymentConfig","name":"deploymentConfig","type":"tuple"}],"name":"deployToken","outputs":[{"internalType":"address","name":"tokenAddress","type":"address"}],"stateMutability":"payable","type":"function"},
+    {"inputs":[{"components":[{"internalType":"address","name":"tokenAdmin","type":"address"},{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"symbol","type":"string"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"string","name":"image","type":"string"},{"internalType":"string","name":"metadata","type":"string"},{"internalType":"string","name":"context","type":"string"},{"internalType":"uint256","name":"originatingChainId","type":"uint256"}],"internalType":"struct IClanker.TokenConfig","name":"tokenConfig","type":"tuple"}],"name":"deployTokenZeroSupply","outputs":[{"internalType":"address","name":"tokenAddress","type":"address"}],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"deploymentInfoForToken","outputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"address","name":"hook","type":"address"},{"internalType":"address","name":"locker","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"deprecated","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"locker","type":"address"},{"internalType":"address","name":"hook","type":"address"}],"name":"enabledLockers","outputs":[{"internalType":"bool","name":"enabled","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"admin","type":"address"},{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"bool","name":"deprecated_","type":"bool"}],"name":"setDeprecated","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"extension","type":"address"},{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setExtension","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"hook","type":"address"},{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setHook","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"locker","type":"address"},{"internalType":"address","name":"hook","type":"address"},{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setLocker","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"mevModule","type":"address"},{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setMevModule","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"address","name":"teamFeeRecipient_","type":"address"}],"name":"setTeamFeeRecipient","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[],"name":"teamFeeRecipient","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"tokenDeploymentInfo","outputs":[{"components":[{"internalType":"address","name":"token","type":"address"},{"internalType":"address","name":"hook","type":"address"},{"internalType":"address","name":"locker","type":"address"},{"internalType":"address[]","name":"extensions","type":"address[]"}],"internalType":"struct IClanker.DeploymentInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"}
 ]
 MONITORED_CHAINS = {
     "base": "Base",
@@ -682,6 +741,11 @@ class ClankerMonitor(commands.Cog):
         self.clanker_factory = self.w3_ws.eth.contract(
             address=Web3.to_checksum_address(CLANKER_FACTORY_ADDRESS),
             abi=CLANKER_FACTORY_ABI
+        )
+        # --- Ajout du contrat factory V4 ---
+        self.clanker_factory_v4 = self.w3_ws.eth.contract(
+            address=Web3.to_checksum_address(CLANKER_FACTORY_V4_ADDRESS),
+            abi=CLANKER_FACTORY_V4_ABI
         )
         # ---
 
@@ -1496,6 +1560,137 @@ class ClankerMonitor(commands.Cog):
                             await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"Error creating event filter: {e}")
+                await asyncio.sleep(5)  # Attendre avant de réessayer de créer le filtre
+
+    async def listen_onchain_clanker_v4(self):
+        await self.bot.wait_until_ready()
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
+        channel = self.channel
+        if not channel:
+            logger.error("Could not find channel for Clanker V4 notifications")
+            return
+
+        while True:  # Boucle principale de reconnexion
+            try:
+                # Création du filtre d'event TokenCreated pour V4
+                event_filter = self.clanker_factory_v4.events.TokenCreated.create_filter(fromBlock='latest')
+                logger.info("Started on-chain Clanker V4 event listener")
+
+                # Récupération du SnipeMonitor pour accès aux snipes
+                snipe_monitor = self.bot.get_cog('SnipeMonitor')
+
+                while True:  # Boucle de lecture des événements
+                    try:
+                        for event in event_filter.get_new_entries():
+                            token_address = event['args']['tokenAddress']
+                            tx_hash = event['transactionHash']
+                            tx = self.w3_ws.eth.get_transaction(tx_hash)
+                            # Décodage des input data pour V4
+                            try:
+                                func_obj, func_args = self.clanker_factory_v4.decode_function_input(tx['input'])
+                                token_config = func_args['deploymentConfig']['tokenConfig']
+                                name = token_config['name']
+                                symbol = token_config['symbol']
+                                image = token_config['image']
+                                metadata = token_config['metadata']
+                                context = token_config['context']
+                                # Extraction du FID depuis le context (JSON)
+                                fid = None
+                                try:
+                                    context_json = json.loads(context)
+                                    fid = str(context_json.get('id'))
+                                except Exception:
+                                    pass
+                                # --- Filtrage banlist/whitelist ---
+                                if fid:
+                                    if fid in self.banned_fids:
+                                        logger.info(f"On-chain V4 alert ignorée : FID {fid} banni.")
+                                        continue
+                                    if self.premium_only and fid not in self.whitelisted_fids:
+                                        logger.info(f"On-chain V4 alert ignorée : FID {fid} non whitelisté en mode premium_only.")
+                                        continue
+                                # ---
+                                # Vérifier si le FID est whitelisté
+                                is_premium = fid and fid in self.whitelisted_fids
+                                # Envoie l'alerte Discord
+                                embed = discord.Embed(
+                                    title="🥇 Nouveau Token Clanker V4 Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker V4 (on-chain)",
+                                    color=discord.Color.gold() if is_premium else discord.Color.purple(),
+                                    timestamp=datetime.now(timezone.utc)
+                                )
+                                embed.add_field(name="Nom du Token", value=name, inline=True)
+                                embed.add_field(name="Ticker", value=symbol, inline=True)
+                                embed.add_field(name="Adresse", value=f"`{token_address}`", inline=False)
+                                # Ajout du lien Clanker.world
+                                clanker_link = f"https://www.clanker.world/clanker/{token_address}"
+                                embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                                if image:
+                                    embed.set_thumbnail(url=image)
+                                if fid:
+                                    embed.add_field(name="FID", value=f"{fid} 🥇" if is_premium else fid, inline=True)
+                                # Ajout des boutons Ban, Remove Whitelist et Photon
+                                view = discord.ui.View()
+                                if fid:
+                                    ban_button = discord.ui.Button(
+                                        style=discord.ButtonStyle.danger,
+                                        label="Ban",
+                                        custom_id=f"blacklist_{fid}"
+                                    )
+                                    view.add_item(ban_button)
+                                if is_premium:
+                                    remove_whitelist_button = discord.ui.Button(
+                                        style=discord.ButtonStyle.danger,
+                                        label="Remove Whitelist",
+                                        custom_id=f"removewhitelist_{fid}"
+                                    )
+                                    view.add_item(remove_whitelist_button)
+                                photon_button = discord.ui.Button(
+                                    style=discord.ButtonStyle.primary,
+                                    label="Voir sur Photon",
+                                    url=f"https://photon-base.tinyastro.io/en/lp/{token_address}"
+                                )
+                                view.add_item(photon_button)
+                                await channel.send(embed=embed, view=view)
+                                logger.info(f"On-chain Clanker V4 alert sent for {name} ({symbol}) {token_address}")
+                                # Ajout à la surveillance volume
+                                self.tracked_clanker_tokens[token_address.lower()] = {
+                                    'first_seen': time.time(),
+                                    'alerted': False
+                                }
+                                logger.info(f"[VOLUME TRACK] Ajout du token V4 {token_address.lower()} à la surveillance volume (on-chain)")
+                                # Déclenchement du snipe instantané si FID match
+                                if snipe_monitor and fid and fid in snipe_monitor.snipe_targets:
+                                    snipe = snipe_monitor.snipe_targets[fid]
+                                    if snipe['status'] == 'pending':
+                                        success = await snipe_monitor.send_buy_webhook(token_address, snipe['amount'], snipe['gas_fees'])
+                                        snipe['status'] = 'executed'
+                                        snipe_monitor.snipe_targets[fid] = snipe
+                                        snipe_channel = self.bot.get_channel(snipe['channel_id'])
+                                        if snipe_channel:
+                                            snipe_embed = discord.Embed(
+                                                title="🎯 Snipe Exécuté (on-chain V4 instantané)",
+                                                description=f"Token Clanker V4 trouvé pour le FID: `{fid}`",
+                                                color=discord.Color.blue()
+                                            )
+                                            snipe_embed.add_field(name="Adresse", value=token_address, inline=True)
+                                            snipe_embed.add_field(name="Montant", value=f"{snipe['amount']} ETH", inline=True)
+                                            snipe_embed.add_field(name="Gas Fees", value=f"{snipe['gas_fees']} ETH", inline=True)
+                                            snipe_embed.add_field(name="Status", value="✅ Webhook envoyé" if success else "❌ Webhook erreur", inline=True)
+                                            await snipe_channel.send(embed=snipe_embed)
+                                        logger.info(f"Snipe instantané V4 exécuté pour FID {fid} sur {token_address} (webhook: {success})")
+                            except Exception as e:
+                                logger.error(f"Error decoding V4 input data: {e}")
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        if "filter not found" in str(e):
+                            logger.warning("V4 Filter expired, recreating...")
+                            break  # Sort de la boucle interne pour recréer le filtre
+                        else:
+                            logger.error(f"Error in on-chain Clanker V4 event loop: {e}")
+                            await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Error creating V4 event filter: {e}")
                 await asyncio.sleep(5)  # Attendre avant de réessayer de créer le filtre
 
     @commands.command()
@@ -2644,6 +2839,7 @@ class Bot(commands.Bot):
         # snipe_monitor.monitor_snipes.start()  # Cette ligne est supprimée car nous n'utilisons plus monitor_snipes
         # Lancer la tâche d'écoute on-chain
         asyncio.create_task(clanker_monitor.listen_onchain_clanker())
+        asyncio.create_task(clanker_monitor.listen_onchain_clanker_v4())
 
     async def on_ready(self):
         """Called when the bot is ready."""
