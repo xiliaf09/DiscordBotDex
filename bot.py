@@ -1177,6 +1177,9 @@ class ClankerMonitor(commands.Cog):
                 # Add Clanker.world link
                 clanker_link = f"https://www.clanker.world/clanker/{token_address}"
                 embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                # Add deployment transaction link
+                tx_link = f"https://basescan.org/tx/{tx_hash.hex()}"
+                embed.add_field(name="Transaction", value=f"[Voir sur Basescan]({tx_link})", inline=False)
                 
                 if image:
                     embed.set_thumbnail(url=image)
@@ -1607,6 +1610,9 @@ class ClankerMonitor(commands.Cog):
                                 # Ajout du lien Clanker.world
                                 clanker_link = f"https://www.clanker.world/clanker/{token_address}"
                                 embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                                # Ajout du lien de la transaction de déploiement
+                                tx_link = f"https://basescan.org/tx/{tx_hash.hex()}"
+                                embed.add_field(name="Transaction", value=f"[Voir sur Basescan]({tx_link})", inline=False)
                                 if image:
                                     embed.set_thumbnail(url=image)
                                 if fid:
@@ -1738,6 +1744,9 @@ class ClankerMonitor(commands.Cog):
                                 # Ajout du lien Clanker.world
                                 clanker_link = f"https://www.clanker.world/clanker/{token_address}"
                                 embed.add_field(name="Lien Clanker", value=f"[Voir sur Clanker.world]({clanker_link})", inline=False)
+                                # Ajout du lien de la transaction de déploiement
+                                tx_link = f"https://basescan.org/tx/{tx_hash.hex()}"
+                                embed.add_field(name="Transaction", value=f"[Voir sur Basescan]({tx_link})", inline=False)
                                 if image:
                                     embed.set_thumbnail(url=image)
                                 if fid:
