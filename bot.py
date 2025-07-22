@@ -1769,8 +1769,8 @@ class ClankerMonitor(commands.Cog):
                                     view.add_item(remove_whitelist_button)
                                 photon_button = discord.ui.Button(
                                     style=discord.ButtonStyle.primary,
-                                    label="Voir sur Definitive",
-                                    url=f"https://app.definitive.fi/{token_address}/base"
+                                    label="Voir sur DexScreener",
+                                    url=f"https://dexscreener.com/base/{token_address}"
                                 )
                                 view.add_item(photon_button)
                                 await channel.send(embed=embed, view=view)
