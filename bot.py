@@ -1598,6 +1598,17 @@ class ClankerMonitor(commands.Cog):
                                 # ---
                                 # Vérifier si le FID est whitelisté
                                 is_premium = fid and fid in self.whitelisted_fids
+                                
+                                # Si pas de FID, on ajoute quand même à la surveillance volume mais on n'envoie pas d'alerte Discord
+                                if not fid:
+                                    logger.info(f"Token sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                    # Ajout à la surveillance volume
+                                    self.tracked_clanker_tokens[token_address.lower()] = {
+                                        'first_seen': time.time(),
+                                        'alerted': False
+                                    }
+                                    logger.info(f"[VOLUME TRACK] Ajout du token sans FID {token_address.lower()} à la surveillance volume (on-chain)")
+                                    continue  # Skip l'envoi de l'alerte Discord
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
@@ -1732,6 +1743,17 @@ class ClankerMonitor(commands.Cog):
                                 # ---
                                 # Vérifier si le FID est whitelisté
                                 is_premium = fid and fid in self.whitelisted_fids
+                                
+                                # Si pas de FID, on ajoute quand même à la surveillance volume mais on n'envoie pas d'alerte Discord
+                                if not fid:
+                                    logger.info(f"Token V4 sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                    # Ajout à la surveillance volume
+                                    self.tracked_clanker_tokens[token_address.lower()] = {
+                                        'first_seen': time.time(),
+                                        'alerted': False
+                                    }
+                                    logger.info(f"[VOLUME TRACK] Ajout du token V4 sans FID {token_address.lower()} à la surveillance volume (on-chain)")
+                                    continue  # Skip l'envoi de l'alerte Discord
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker V4 Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker V4 (on-chain)",
