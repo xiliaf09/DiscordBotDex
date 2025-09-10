@@ -1532,7 +1532,27 @@ class ClankerMonitor(commands.Cog):
                         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
                         embed.add_field(name="Volume (5m)", value=f"${volume_5m:,.2f}", inline=False)
                         embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
-                        await self.channel.send(embed=embed)
+                        
+                        # Créer la vue avec les boutons
+                        view = discord.ui.View()
+                        
+                        # Bouton Basescan
+                        basescan_button = discord.ui.Button(
+                            style=discord.ButtonStyle.secondary,
+                            label="Basescan",
+                            url=f"https://basescan.org/token/{contract_address}"
+                        )
+                        view.add_item(basescan_button)
+                        
+                        # Bouton Clanker World
+                        clanker_button = discord.ui.Button(
+                            style=discord.ButtonStyle.primary,
+                            label="Lien Clanker World",
+                            url=f"https://www.clanker.world/clanker/{contract_address}"
+                        )
+                        view.add_item(clanker_button)
+                        
+                        await self.channel.send(embed=embed, view=view)
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
                         logger.info(f"[VOLUME ALERT] Alerte volume envoyée pour {contract_address}")
             except Exception as e:
@@ -1885,7 +1905,27 @@ class ClankerMonitor(commands.Cog):
         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
         embed.add_field(name="Volume (5min)", value=f"${volume_5m:,.2f}", inline=False)
         embed.add_field(name="Dexscreener", value=f"[Voir]({dexscreener_url})", inline=False)
-        await ctx.send(embed=embed)
+        
+        # Créer la vue avec les boutons
+        view = discord.ui.View()
+        
+        # Bouton Basescan
+        basescan_button = discord.ui.Button(
+            style=discord.ButtonStyle.secondary,
+            label="Basescan",
+            url=f"https://basescan.org/token/{contract_address}"
+        )
+        view.add_item(basescan_button)
+        
+        # Bouton Clanker World
+        clanker_button = discord.ui.Button(
+            style=discord.ButtonStyle.primary,
+            label="Lien Clanker World",
+            url=f"https://www.clanker.world/clanker/{contract_address}"
+        )
+        view.add_item(clanker_button)
+        
+        await ctx.send(embed=embed, view=view)
 
     @commands.command()
     async def checkwhitelist(self, ctx):
