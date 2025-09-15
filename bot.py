@@ -730,7 +730,7 @@ class ClankerMonitor(commands.Cog):
         self.bankr_enabled = True
         self.img_required = False
         self.tracked_clanker_tokens = {}
-        self.default_volume_threshold = 5000
+        self.default_volume_threshold = 15000
         logger.info("Loading banned and whitelisted FIDs...")
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
@@ -1491,7 +1491,7 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le seuil doit être strictement positif.")
             return
         self.default_volume_threshold = volume_usd
-        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 5 minutes pour tous les tokens.")
+        await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 24h pour tous les tokens.")
 
     @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
@@ -1517,20 +1517,20 @@ class ClankerMonitor(commands.Cog):
                     if not pairs:
                         continue
                     pair = pairs[0]
-                    volume_5m = float(pair.get('volume', {}).get('m5', 0))
+                    volume_24h = float(pair.get('volume', {}).get('h24', 0))
                     symbol = pair.get('baseToken', {}).get('symbol', contract_address)
                     name = pair.get('baseToken', {}).get('name', contract_address)
                     threshold = self.default_volume_threshold
-                    logger.info(f"[VOLUME CHECK] {name} ({symbol}) {contract_address} - Volume 5m: {volume_5m} USD (seuil: {threshold})")
-                    if volume_5m >= threshold:
+                    logger.info(f"[VOLUME CHECK] {name} ({symbol}) {contract_address} - Volume 24h: {volume_24h} USD (seuil: {threshold})")
+                    if volume_24h >= threshold:
                         embed = discord.Embed(
                             title="🚨 Volume Clanker élevé!",
-                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 5 minutes!",
+                            description=f"Le token {name} ({symbol}) a dépassé {threshold}$ de volume sur 24h!",
                             color=discord.Color.red(),
                             timestamp=datetime.now(timezone.utc)
                         )
                         embed.add_field(name="Contract", value=f"`{contract_address}`", inline=False)
-                        embed.add_field(name="Volume (5m)", value=f"${volume_5m:,.2f}", inline=False)
+                        embed.add_field(name="Volume (24h)", value=f"${volume_24h:,.2f}", inline=False)
                         embed.add_field(name="Dexscreener", value=f"[Voir]({pair.get('url', 'https://dexscreener.com')})", inline=False)
                         
                         # Créer la vue avec les boutons
