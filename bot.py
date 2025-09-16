@@ -273,10 +273,10 @@ async def send_critical_volume_alert(token_name: str, token_symbol: str, contrac
                         "user": user["user"],
                         "message": message,
                         "title": "🚨 Volume Clanker Critique!",
-                        "priority": 2,  # Emergency priority (bypasses quiet hours, repeats every 30s)
+                        "priority": 1,  # High priority (urgent, no repeat)
                         "sound": "siren",  # Siren sound for maximum attention
-                        "retry": 30,  # Retry every 30 seconds
-                        "expire": 3600  # Expire after 1 hour
+                        "retry": 0,  # No retry
+                        "expire": 0  # No expiration
                     }
                 )
                 response.raise_for_status()

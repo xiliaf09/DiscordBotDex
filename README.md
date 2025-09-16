@@ -96,9 +96,9 @@ Pour recevoir des notifications critiques sur iPhone avec son d'alarme :
 5. Ajoutez ces clés dans votre fichier `.env`
 
 Les alertes volume utiliseront :
-- **Priorité critique** (bypass silencieux/DND)
+- **Priorité haute** (urgent, bypass silencieux/DND)
 - **Son de sirène** pour attirer l'attention
-- **Répétition** toutes les 30 secondes jusqu'à confirmation
+- **Notification unique** (pas de répétition)
 - **Envoi multiple** : Si vous configurez un deuxième utilisateur, les alertes seront envoyées aux deux
 
 ## Dépendances
