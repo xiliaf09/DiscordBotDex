@@ -35,6 +35,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
 - `!lastclanker` - Affiche le dernier token déployé sur Clanker
 - `!setvolume <montant>` - Définit le seuil d'alerte volume (défaut: 15000 USD sur 24h)
+- `!setemergencycall <montant>` - Définit le seuil d'appel d'urgence Twilio (défaut: 50000 USD)
 - `!testpushover` - Teste la connexion Pushover (admin uniquement)
 - `!testtwilio` - Teste la connexion Twilio avec un appel (admin uniquement)
 
@@ -121,7 +122,7 @@ Pour recevoir des appels téléphoniques automatiques sur les gros volumes :
 3. Obtenez votre Account SID et Auth Token dans le dashboard
 4. Ajoutez ces clés dans vos variables d'environnement
 
-**Seuil d'appel :** 50 000 USD (configurable dans le code)
+**Seuil d'appel :** 50 000 USD (configurable avec `!setemergencycall <montant>`)
 
 ## Dépendances
 

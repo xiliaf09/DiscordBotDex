@@ -781,7 +781,9 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!lastclanker", value="Affiche le dernier token déployé sur Clanker.", inline=False)
         embed.add_field(name="!volume <contract>", value="Affiche le volume du token sur 24h, 6h, 1h, 5min.", inline=False)
         embed.add_field(name="!setvolume <usd>", value="Définit le seuil global d'alerte volume (24h).", inline=False)
+        embed.add_field(name="!setemergencycall <usd>", value="Définit le seuil d'appel d'urgence Twilio (défaut: 50000 USD).", inline=False)
         embed.add_field(name="!testpushover", value="Teste la connexion Pushover (admin uniquement).", inline=False)
+        embed.add_field(name="!testtwilio", value="Teste la connexion Twilio avec un appel (admin uniquement).", inline=False)
         embed.add_field(name="!banfid <fid>", value="Bannit un FID pour ne plus recevoir ses alertes de déploiement.", inline=False)
         embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
@@ -808,6 +810,7 @@ class ClankerMonitor(commands.Cog):
         self.img_required = False
         self.tracked_clanker_tokens = {}
         self.default_volume_threshold = 15000
+        self.emergency_call_threshold = 50000  # Seuil pour les appels d'urgence
         logger.info("Loading banned and whitelisted FIDs...")
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
@@ -1572,6 +1575,16 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
+    async def setemergencycall(self, ctx, volume_usd: float):
+        """Définit le seuil d'appel d'urgence Twilio (en USD)"""
+        if volume_usd <= 0:
+            await ctx.send("❌ Le seuil doit être strictement positif.")
+            return
+        self.emergency_call_threshold = volume_usd
+        await ctx.send(f"✅ Seuil d'appel d'urgence défini à {volume_usd} USD. Les appels Twilio se déclencheront pour les volumes >= {volume_usd} USD.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
     async def testpushover(self, ctx):
         """Teste la connexion Pushover en envoyant une notification de test à tous les utilisateurs configurés"""
         # Check if at least one user is configured
@@ -1680,8 +1693,8 @@ class ClankerMonitor(commands.Cog):
                         # Send critical Pushover notification for volume alert
                         await send_critical_volume_alert(name, symbol, contract_address, volume_24h, threshold)
                         
-                        # Make emergency phone call if volume is above 50k USD
-                        if volume_24h >= 50000:
+                        # Make emergency phone call if volume is above emergency threshold
+                        if volume_24h >= self.emergency_call_threshold:
                             await make_emergency_call(name, symbol, volume_24h)
                         
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
