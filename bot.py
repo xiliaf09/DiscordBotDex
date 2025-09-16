@@ -1528,7 +1528,7 @@ class ClankerMonitor(commands.Cog):
     async def testpushover(self, ctx):
         """Teste la connexion Pushover en envoyant une notification de test"""
         if not config.PUSHOVER_API_TOKEN or not config.PUSHOVER_USER_KEY:
-            await ctx.send("❌ Pushover non configuré. Ajoutez PUSHOVER_API_TOKEN et PUSHOVER_USER_KEY dans votre .env")
+            await ctx.send("❌ Pushover non configuré. Ajoutez PUSHOVER_API_TOKEN et PUSHOVER_USER_KEY dans vos variables d'environnement.")
             return
         
         try:
