@@ -39,4 +39,10 @@ PUSHOVER_USER_KEY = os.getenv('PUSHOVER_USER_KEY')
 
 # Pushover Configuration for second user (optional)
 PUSHOVER_API_TOKEN_2 = os.getenv('PUSHOVER_API_TOKEN_2')
-PUSHOVER_USER_KEY_2 = os.getenv('PUSHOVER_USER_KEY_2') 
+PUSHOVER_USER_KEY_2 = os.getenv('PUSHOVER_USER_KEY_2')
+
+# Twilio Configuration (for phone calls on critical volume alerts)
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
+YOUR_PHONE_NUMBER = os.getenv('YOUR_PHONE_NUMBER') 

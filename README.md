@@ -9,6 +9,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - Commandes pour activer/désactiver le monitoring par chaîne
 - Surveillance des nouveaux tokens Clanker
 - **Alertes volume critiques avec notifications Pushover** (son d'alarme, bypass silencieux/DND)
+- **Appels téléphoniques d'urgence Twilio** pour volumes > 50k USD
 - Affichage des informations détaillées des tokens
 - Tracking des transactions de wallets sur Base
 
@@ -35,6 +36,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!lastclanker` - Affiche le dernier token déployé sur Clanker
 - `!setvolume <montant>` - Définit le seuil d'alerte volume (défaut: 15000 USD sur 24h)
 - `!testpushover` - Teste la connexion Pushover (admin uniquement)
+- `!testtwilio` - Teste la connexion Twilio avec un appel (admin uniquement)
 
 ### Commandes de Tracking de Wallet
 - `!track <adresse_wallet>` - Active le suivi des transactions d'un wallet sur Base
@@ -62,6 +64,10 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
    PUSHOVER_USER_KEY=votre_cle_utilisateur_pushover
    PUSHOVER_API_TOKEN_2=token_api_pushover_ami (optionnel)
    PUSHOVER_USER_KEY_2=cle_utilisateur_pushover_ami (optionnel)
+   TWILIO_ACCOUNT_SID=votre_account_sid_twilio
+   TWILIO_AUTH_TOKEN=votre_auth_token_twilio
+   TWILIO_PHONE_NUMBER=+1234567890 (votre numéro Twilio)
+   YOUR_PHONE_NUMBER=+1234567890 (votre numéro personnel)
    ```
 4. Lancez le bot :
    ```bash
@@ -84,6 +90,10 @@ Le bot utilise les variables d'environnement suivantes :
 - `PUSHOVER_USER_KEY` : Clé utilisateur Pushover (pour les alertes critiques - utilisateur 1)
 - `PUSHOVER_API_TOKEN_2` : Token API Pushover (pour les alertes critiques - utilisateur 2, optionnel)
 - `PUSHOVER_USER_KEY_2` : Clé utilisateur Pushover (pour les alertes critiques - utilisateur 2, optionnel)
+- `TWILIO_ACCOUNT_SID` : Account SID Twilio (pour les appels d'urgence)
+- `TWILIO_AUTH_TOKEN` : Auth Token Twilio (pour les appels d'urgence)
+- `TWILIO_PHONE_NUMBER` : Numéro de téléphone Twilio (pour les appels d'urgence)
+- `YOUR_PHONE_NUMBER` : Votre numéro de téléphone personnel (pour recevoir les appels)
 
 ### Configuration Pushover (Alertes Critiques)
 
@@ -100,6 +110,18 @@ Les alertes volume utiliseront :
 - **Son de sirène** pour attirer l'attention
 - **Notification unique** (pas de répétition)
 - **Envoi multiple** : Si vous configurez un deuxième utilisateur, les alertes seront envoyées aux deux
+- **Appel téléphonique** : Pour les volumes > 50k USD, un appel vocal sera effectué
+
+### Configuration Twilio (Appels d'Urgence)
+
+Pour recevoir des appels téléphoniques automatiques sur les gros volumes :
+
+1. Créez un compte sur [twilio.com](https://twilio.com)
+2. Achetez un numéro de téléphone Twilio (recommandé : US, ~$1-2/mois)
+3. Obtenez votre Account SID et Auth Token dans le dashboard
+4. Ajoutez ces clés dans vos variables d'environnement
+
+**Seuil d'appel :** 50 000 USD (configurable dans le code)
 
 ## Dépendances
 
@@ -109,6 +131,7 @@ Les alertes volume utiliseront :
 - httpx
 - feedparser
 - web3
+- twilio (pour les appels d'urgence)
 
 ## Contribution
 

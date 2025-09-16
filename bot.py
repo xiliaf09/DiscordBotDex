@@ -20,6 +20,7 @@ import sqlite3
 from datetime import datetime
 import config
 from web3.middleware import geth_poa_middleware
+from twilio.rest import Client
 
 # Configure logging
 logging.basicConfig(
@@ -235,6 +236,11 @@ weth = w3.eth.contract(address=config.WETH_ADDRESS, abi=WETH_ABI)
 # Ajout de la variable d'environnement pour QuickNode WebSocket
 QUICKNODE_WSS = os.getenv('QUICKNODE_WSS')
 
+# Twilio client for phone calls
+twilio_client = None
+if config.TWILIO_ACCOUNT_SID and config.TWILIO_AUTH_TOKEN:
+    twilio_client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+
 async def send_critical_volume_alert(token_name: str, token_symbol: str, contract_address: str, volume_24h: float, threshold: float):
     """Send a critical Pushover notification for volume alerts to all configured users"""
     # List of users to send to
@@ -283,6 +289,27 @@ async def send_critical_volume_alert(token_name: str, token_symbol: str, contrac
                 logger.info(f"[PUSHOVER] Critical volume alert sent to {user['name']} for {token_name} ({token_symbol})")
             except Exception as e:
                 logger.error(f"[PUSHOVER ERROR] Failed to send critical alert to {user['name']}: {e}")
+
+async def make_emergency_call(token_name: str, token_symbol: str, volume_24h: float):
+    """Make an emergency phone call for critical volume alerts"""
+    if not twilio_client or not config.TWILIO_PHONE_NUMBER or not config.YOUR_PHONE_NUMBER:
+        logger.warning("Twilio not configured - skipping emergency call")
+        return
+    
+    try:
+        # Create a message for the call
+        message = f"Emergency alert! {token_name} {token_symbol} has reached {volume_24h:,.0f} dollars in volume. This is a critical alert from your Clanker bot."
+        
+        # Make the call
+        call = twilio_client.calls.create(
+            twiml=f'<Response><Say voice="alice">{message}</Say></Response>',
+            to=config.YOUR_PHONE_NUMBER,
+            from_=config.TWILIO_PHONE_NUMBER
+        )
+        
+        logger.info(f"[TWILIO] Emergency call initiated for {token_name} ({token_symbol}) - Call SID: {call.sid}")
+    except Exception as e:
+        logger.error(f"[TWILIO ERROR] Failed to make emergency call: {e}")
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -1573,6 +1600,22 @@ class ClankerMonitor(commands.Cog):
             await ctx.send(f"❌ Erreur lors du test Pushover: {e}")
             logger.error(f"Pushover test failed: {e}")
 
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def testtwilio(self, ctx):
+        """Teste la connexion Twilio en faisant un appel de test"""
+        if not twilio_client or not config.TWILIO_PHONE_NUMBER or not config.YOUR_PHONE_NUMBER:
+            await ctx.send("❌ Twilio non configuré. Ajoutez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER et YOUR_PHONE_NUMBER dans vos variables d'environnement.")
+            return
+        
+        try:
+            # Faire un appel de test
+            await make_emergency_call("TEST TOKEN", "TEST", 75000.0)
+            await ctx.send("✅ Appel Twilio de test initié ! Vérifiez votre téléphone.")
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors du test Twilio: {e}")
+            logger.error(f"Twilio test failed: {e}")
+
     @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):
         logger.info("[VOLUME CHECK] Tick de surveillance volume Clanker")
@@ -1636,6 +1679,10 @@ class ClankerMonitor(commands.Cog):
                         
                         # Send critical Pushover notification for volume alert
                         await send_critical_volume_alert(name, symbol, contract_address, volume_24h, threshold)
+                        
+                        # Make emergency phone call if volume is above 50k USD
+                        if volume_24h >= 50000:
+                            await make_emergency_call(name, symbol, volume_24h)
                         
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
                         logger.info(f"[VOLUME ALERT] Alerte volume envoyée pour {contract_address}")
