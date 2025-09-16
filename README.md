@@ -8,6 +8,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - Détection des mentions de cryptomonnaies dans les posts de Trump
 - Commandes pour activer/désactiver le monitoring par chaîne
 - Surveillance des nouveaux tokens Clanker
+- **Alertes volume critiques avec notifications Pushover** (son d'alarme, bypass silencieux/DND)
 - Affichage des informations détaillées des tokens
 - Tracking des transactions de wallets sur Base
 
@@ -32,6 +33,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!clankeron` - Active le monitoring des nouveaux tokens Clanker
 - `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
 - `!lastclanker` - Affiche le dernier token déployé sur Clanker
+- `!setvolume <montant>` - Définit le seuil d'alerte volume (défaut: 15000 USD sur 24h)
 
 ### Commandes de Tracking de Wallet
 - `!track <adresse_wallet>` - Active le suivi des transactions d'un wallet sur Base
@@ -47,8 +49,16 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 3. Créez un fichier `.env` avec les variables suivantes :
    ```
    DISCORD_TOKEN=votre_token_discord
-   CHANNEL_ID=id_du_canal
-   BASESCAN_API_KEY=votre_cle_api_basescan
+   DISCORD_CHANNEL_ID=id_du_canal
+   ADMIN_ROLE_ID=id_du_role_admin
+   BASE_RPC_URL=votre_url_rpc_base
+   WALLET_PRIVATE_KEY=votre_cle_privee_wallet
+   WALLET_ADDRESS=votre_adresse_wallet
+   CLANKER_API_KEY=votre_cle_api_clanker
+   CLANKER_API_SECRET=votre_secret_api_clanker
+   QUICKNODE_WSS=votre_url_websocket_quicknode
+   PUSHOVER_API_TOKEN=votre_token_api_pushover
+   PUSHOVER_USER_KEY=votre_cle_utilisateur_pushover
    ```
 4. Lancez le bot :
    ```bash
@@ -59,8 +69,31 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 
 Le bot utilise les variables d'environnement suivantes :
 - `DISCORD_TOKEN` : Le token de votre bot Discord
-- `CHANNEL_ID` : L'ID du canal où les notifications seront envoyées
-- `BASESCAN_API_KEY` : Votre clé API Basescan pour accéder aux données de transactions
+- `DISCORD_CHANNEL_ID` : L'ID du canal où les notifications seront envoyées
+- `ADMIN_ROLE_ID` : L'ID du rôle administrateur
+- `BASE_RPC_URL` : URL RPC pour la blockchain Base
+- `WALLET_PRIVATE_KEY` : Clé privée du wallet pour les transactions
+- `WALLET_ADDRESS` : Adresse du wallet
+- `CLANKER_API_KEY` : Clé API Clanker
+- `CLANKER_API_SECRET` : Secret API Clanker
+- `QUICKNODE_WSS` : URL WebSocket QuickNode pour l'écoute on-chain
+- `PUSHOVER_API_TOKEN` : Token API Pushover (pour les alertes critiques)
+- `PUSHOVER_USER_KEY` : Clé utilisateur Pushover (pour les alertes critiques)
+
+### Configuration Pushover (Alertes Critiques)
+
+Pour recevoir des notifications critiques sur iPhone avec son d'alarme :
+
+1. Créez un compte sur [pushover.net](https://pushover.net/)
+2. Installez l'app Pushover sur votre iPhone
+3. Obtenez votre `PUSHOVER_USER_KEY` dans l'app
+4. Créez une application sur pushover.net pour obtenir votre `PUSHOVER_API_TOKEN`
+5. Ajoutez ces clés dans votre fichier `.env`
+
+Les alertes volume utiliseront :
+- **Priorité critique** (bypass silencieux/DND)
+- **Son de sirène** pour attirer l'attention
+- **Répétition** toutes les 30 secondes jusqu'à confirmation
 
 ## Dépendances
 
@@ -70,6 +103,7 @@ Le bot utilise les variables d'environnement suivantes :
 - httpx
 - feedparser
 - web3
+- python-pushover (pour les alertes critiques)
 
 ## Contribution
 

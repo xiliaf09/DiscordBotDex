@@ -31,4 +31,8 @@ PRIORITY_FEE = 1.5  # gwei
 COMMAND_PREFIX = "!"
 
 # Database Configuration (for storing active snipes)
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///snipes.db') 
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///snipes.db')
+
+# Pushover Configuration (for critical volume alerts)
+PUSHOVER_API_TOKEN = os.getenv('PUSHOVER_API_TOKEN')
+PUSHOVER_USER_KEY = os.getenv('PUSHOVER_USER_KEY') 

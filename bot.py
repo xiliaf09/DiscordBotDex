@@ -20,6 +20,7 @@ import sqlite3
 from datetime import datetime
 import config
 from web3.middleware import geth_poa_middleware
+from pushover import Client
 
 # Configure logging
 logging.basicConfig(
@@ -234,6 +235,33 @@ weth = w3.eth.contract(address=config.WETH_ADDRESS, abi=WETH_ABI)
 
 # Ajout de la variable d'environnement pour QuickNode WebSocket
 QUICKNODE_WSS = os.getenv('QUICKNODE_WSS')
+
+# Pushover client for critical volume alerts
+pushover_client = None
+if config.PUSHOVER_API_TOKEN and config.PUSHOVER_USER_KEY:
+    pushover_client = Client(config.PUSHOVER_USER_KEY, api_token=config.PUSHOVER_API_TOKEN)
+
+async def send_critical_volume_alert(token_name: str, token_symbol: str, contract_address: str, volume_24h: float, threshold: float):
+    """Send a critical Pushover notification for volume alerts"""
+    if not pushover_client:
+        logger.warning("Pushover not configured - skipping critical alert")
+        return
+    
+    try:
+        message = f"🚨 VOLUME ALERT!\n\n{token_name} ({token_symbol})\nVolume 24h: ${volume_24h:,.2f}\nSeuil: ${threshold:,.2f}\n\nContract: {contract_address[:10]}...{contract_address[-6:]}"
+        
+        # Send critical alert with emergency priority
+        pushover_client.send_message(
+            message,
+            title="🚨 Volume Clanker Critique!",
+            priority=2,  # Emergency priority (bypasses quiet hours, repeats every 30s)
+            sound="siren",  # Siren sound for maximum attention
+            retry=30,  # Retry every 30 seconds
+            expire=3600  # Expire after 1 hour
+        )
+        logger.info(f"[PUSHOVER] Critical volume alert sent for {token_name} ({token_symbol})")
+    except Exception as e:
+        logger.error(f"[PUSHOVER ERROR] Failed to send critical alert: {e}")
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -1553,6 +1581,10 @@ class ClankerMonitor(commands.Cog):
                         view.add_item(clanker_button)
                         
                         await self.channel.send(embed=embed, view=view)
+                        
+                        # Send critical Pushover notification for volume alert
+                        await send_critical_volume_alert(name, symbol, contract_address, volume_24h, threshold)
+                        
                         self.tracked_clanker_tokens[contract_address]['alerted'] = True
                         logger.info(f"[VOLUME ALERT] Alerte volume envoyée pour {contract_address}")
             except Exception as e:
