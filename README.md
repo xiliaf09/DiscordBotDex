@@ -60,6 +60,8 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
    QUICKNODE_WSS=votre_url_websocket_quicknode
    PUSHOVER_API_TOKEN=votre_token_api_pushover
    PUSHOVER_USER_KEY=votre_cle_utilisateur_pushover
+   PUSHOVER_API_TOKEN_2=token_api_pushover_ami (optionnel)
+   PUSHOVER_USER_KEY_2=cle_utilisateur_pushover_ami (optionnel)
    ```
 4. Lancez le bot :
    ```bash
@@ -78,8 +80,10 @@ Le bot utilise les variables d'environnement suivantes :
 - `CLANKER_API_KEY` : Clé API Clanker
 - `CLANKER_API_SECRET` : Secret API Clanker
 - `QUICKNODE_WSS` : URL WebSocket QuickNode pour l'écoute on-chain
-- `PUSHOVER_API_TOKEN` : Token API Pushover (pour les alertes critiques)
-- `PUSHOVER_USER_KEY` : Clé utilisateur Pushover (pour les alertes critiques)
+- `PUSHOVER_API_TOKEN` : Token API Pushover (pour les alertes critiques - utilisateur 1)
+- `PUSHOVER_USER_KEY` : Clé utilisateur Pushover (pour les alertes critiques - utilisateur 1)
+- `PUSHOVER_API_TOKEN_2` : Token API Pushover (pour les alertes critiques - utilisateur 2, optionnel)
+- `PUSHOVER_USER_KEY_2` : Clé utilisateur Pushover (pour les alertes critiques - utilisateur 2, optionnel)
 
 ### Configuration Pushover (Alertes Critiques)
 
@@ -95,6 +99,7 @@ Les alertes volume utiliseront :
 - **Priorité critique** (bypass silencieux/DND)
 - **Son de sirène** pour attirer l'attention
 - **Répétition** toutes les 30 secondes jusqu'à confirmation
+- **Envoi multiple** : Si vous configurez un deuxième utilisateur, les alertes seront envoyées aux deux
 
 ## Dépendances
 

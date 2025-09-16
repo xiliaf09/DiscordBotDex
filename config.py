@@ -35,4 +35,8 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///snipes.db')
 
 # Pushover Configuration (for critical volume alerts)
 PUSHOVER_API_TOKEN = os.getenv('PUSHOVER_API_TOKEN')
-PUSHOVER_USER_KEY = os.getenv('PUSHOVER_USER_KEY') 
+PUSHOVER_USER_KEY = os.getenv('PUSHOVER_USER_KEY')
+
+# Pushover Configuration for second user (optional)
+PUSHOVER_API_TOKEN_2 = os.getenv('PUSHOVER_API_TOKEN_2')
+PUSHOVER_USER_KEY_2 = os.getenv('PUSHOVER_USER_KEY_2') 

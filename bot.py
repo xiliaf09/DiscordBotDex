@@ -236,33 +236,53 @@ weth = w3.eth.contract(address=config.WETH_ADDRESS, abi=WETH_ABI)
 QUICKNODE_WSS = os.getenv('QUICKNODE_WSS')
 
 async def send_critical_volume_alert(token_name: str, token_symbol: str, contract_address: str, volume_24h: float, threshold: float):
-    """Send a critical Pushover notification for volume alerts"""
-    if not config.PUSHOVER_API_TOKEN or not config.PUSHOVER_USER_KEY:
-        logger.warning("Pushover not configured - skipping critical alert")
+    """Send a critical Pushover notification for volume alerts to all configured users"""
+    # List of users to send to
+    users = []
+    
+    # Add first user if configured
+    if config.PUSHOVER_API_TOKEN and config.PUSHOVER_USER_KEY:
+        users.append({
+            "token": config.PUSHOVER_API_TOKEN,
+            "user": config.PUSHOVER_USER_KEY,
+            "name": "User 1"
+        })
+    
+    # Add second user if configured
+    if config.PUSHOVER_API_TOKEN_2 and config.PUSHOVER_USER_KEY_2:
+        users.append({
+            "token": config.PUSHOVER_API_TOKEN_2,
+            "user": config.PUSHOVER_USER_KEY_2,
+            "name": "User 2"
+        })
+    
+    if not users:
+        logger.warning("No Pushover users configured - skipping critical alert")
         return
     
-    try:
-        message = f"🚨 VOLUME ALERT!\n\n{token_name} ({token_symbol})\nVolume 24h: ${volume_24h:,.2f}\nSeuil: ${threshold:,.2f}\n\nContract: {contract_address[:10]}...{contract_address[-6:]}"
-        
-        # Send critical alert with emergency priority using httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.pushover.net/1/messages.json",
-                data={
-                    "token": config.PUSHOVER_API_TOKEN,
-                    "user": config.PUSHOVER_USER_KEY,
-                    "message": message,
-                    "title": "🚨 Volume Clanker Critique!",
-                    "priority": 2,  # Emergency priority (bypasses quiet hours, repeats every 30s)
-                    "sound": "siren",  # Siren sound for maximum attention
-                    "retry": 30,  # Retry every 30 seconds
-                    "expire": 3600  # Expire after 1 hour
-                }
-            )
-            response.raise_for_status()
-            logger.info(f"[PUSHOVER] Critical volume alert sent for {token_name} ({token_symbol})")
-    except Exception as e:
-        logger.error(f"[PUSHOVER ERROR] Failed to send critical alert: {e}")
+    message = f"🚨 VOLUME ALERT!\n\n{token_name} ({token_symbol})\nVolume 24h: ${volume_24h:,.2f}\nSeuil: ${threshold:,.2f}\n\nContract: {contract_address[:10]}...{contract_address[-6:]}"
+    
+    # Send to all configured users
+    async with httpx.AsyncClient() as client:
+        for user in users:
+            try:
+                response = await client.post(
+                    "https://api.pushover.net/1/messages.json",
+                    data={
+                        "token": user["token"],
+                        "user": user["user"],
+                        "message": message,
+                        "title": "🚨 Volume Clanker Critique!",
+                        "priority": 2,  # Emergency priority (bypasses quiet hours, repeats every 30s)
+                        "sound": "siren",  # Siren sound for maximum attention
+                        "retry": 30,  # Retry every 30 seconds
+                        "expire": 3600  # Expire after 1 hour
+                    }
+                )
+                response.raise_for_status()
+                logger.info(f"[PUSHOVER] Critical volume alert sent to {user['name']} for {token_name} ({token_symbol})")
+            except Exception as e:
+                logger.error(f"[PUSHOVER ERROR] Failed to send critical alert to {user['name']}: {e}")
 
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
@@ -1526,9 +1546,16 @@ class ClankerMonitor(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def testpushover(self, ctx):
-        """Teste la connexion Pushover en envoyant une notification de test"""
-        if not config.PUSHOVER_API_TOKEN or not config.PUSHOVER_USER_KEY:
-            await ctx.send("❌ Pushover non configuré. Ajoutez PUSHOVER_API_TOKEN et PUSHOVER_USER_KEY dans vos variables d'environnement.")
+        """Teste la connexion Pushover en envoyant une notification de test à tous les utilisateurs configurés"""
+        # Check if at least one user is configured
+        users_configured = []
+        if config.PUSHOVER_API_TOKEN and config.PUSHOVER_USER_KEY:
+            users_configured.append("User 1")
+        if config.PUSHOVER_API_TOKEN_2 and config.PUSHOVER_USER_KEY_2:
+            users_configured.append("User 2")
+        
+        if not users_configured:
+            await ctx.send("❌ Aucun utilisateur Pushover configuré. Ajoutez au moins PUSHOVER_API_TOKEN et PUSHOVER_USER_KEY dans vos variables d'environnement.")
             return
         
         try:
@@ -1540,7 +1567,8 @@ class ClankerMonitor(commands.Cog):
                 25000.0, 
                 15000.0
             )
-            await ctx.send("✅ Notification Pushover de test envoyée ! Vérifiez votre iPhone.")
+            users_list = ", ".join(users_configured)
+            await ctx.send(f"✅ Notification Pushover de test envoyée à {users_list} ! Vérifiez vos iPhones.")
         except Exception as e:
             await ctx.send(f"❌ Erreur lors du test Pushover: {e}")
             logger.error(f"Pushover test failed: {e}")
