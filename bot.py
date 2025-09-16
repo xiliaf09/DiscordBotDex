@@ -733,7 +733,8 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!clankeron / !clankeroff", value="Active/désactive le monitoring Clanker.", inline=False)
         embed.add_field(name="!lastclanker", value="Affiche le dernier token déployé sur Clanker.", inline=False)
         embed.add_field(name="!volume <contract>", value="Affiche le volume du token sur 24h, 6h, 1h, 5min.", inline=False)
-        embed.add_field(name="!setvolume <usd>", value="Définit le seuil global d'alerte volume (5min).", inline=False)
+        embed.add_field(name="!setvolume <usd>", value="Définit le seuil global d'alerte volume (24h).", inline=False)
+        embed.add_field(name="!testpushover", value="Teste la connexion Pushover (admin uniquement).", inline=False)
         embed.add_field(name="!banfid <fid>", value="Bannit un FID pour ne plus recevoir ses alertes de déploiement.", inline=False)
         embed.add_field(name="!unbanfid <fid>", value="Débannit un FID pour recevoir à nouveau ses alertes.", inline=False)
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
@@ -1521,6 +1522,28 @@ class ClankerMonitor(commands.Cog):
             return
         self.default_volume_threshold = volume_usd
         await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 24h pour tous les tokens.")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def testpushover(self, ctx):
+        """Teste la connexion Pushover en envoyant une notification de test"""
+        if not config.PUSHOVER_API_TOKEN or not config.PUSHOVER_USER_KEY:
+            await ctx.send("❌ Pushover non configuré. Ajoutez PUSHOVER_API_TOKEN et PUSHOVER_USER_KEY dans votre .env")
+            return
+        
+        try:
+            # Envoyer une notification de test
+            await send_critical_volume_alert(
+                "TEST TOKEN", 
+                "TEST", 
+                "0x1234567890abcdef1234567890abcdef12345678", 
+                25000.0, 
+                15000.0
+            )
+            await ctx.send("✅ Notification Pushover de test envoyée ! Vérifiez votre iPhone.")
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors du test Pushover: {e}")
+            logger.error(f"Pushover test failed: {e}")
 
     @tasks.loop(seconds=10)
     async def monitor_clanker_volumes(self):

@@ -34,6 +34,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!clankeroff` - Désactive le monitoring des nouveaux tokens Clanker
 - `!lastclanker` - Affiche le dernier token déployé sur Clanker
 - `!setvolume <montant>` - Définit le seuil d'alerte volume (défaut: 15000 USD sur 24h)
+- `!testpushover` - Teste la connexion Pushover (admin uniquement)
 
 ### Commandes de Tracking de Wallet
 - `!track <adresse_wallet>` - Active le suivi des transactions d'un wallet sur Base
