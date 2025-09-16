@@ -103,7 +103,6 @@ Les alertes volume utiliseront :
 - httpx
 - feedparser
 - web3
-- python-pushover (pour les alertes critiques)
 
 ## Contribution
 
