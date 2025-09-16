@@ -260,7 +260,7 @@ async def send_critical_volume_alert(token_name: str, token_symbol: str, contrac
         logger.warning("No Pushover users configured - skipping critical alert")
         return
     
-    message = f"🚨 VOLUME ALERT!\n\n{token_name} ({token_symbol})\nVolume 24h: ${volume_24h:,.2f}\nSeuil: ${threshold:,.2f}\n\nContract: {contract_address[:10]}...{contract_address[-6:]}"
+    message = f"{token_name} ({token_symbol})\nVolume 24h: ${volume_24h:,.2f} USD"
     
     # Send to all configured users
     async with httpx.AsyncClient() as client:
@@ -272,7 +272,7 @@ async def send_critical_volume_alert(token_name: str, token_symbol: str, contrac
                         "token": user["token"],
                         "user": user["user"],
                         "message": message,
-                        "title": "🚨 Volume Clanker Critique!",
+                        "title": "🚨 Volume Clanker!",
                         "priority": 1,  # High priority (urgent, no repeat)
                         "sound": "siren",  # Siren sound for maximum attention
                         "retry": 0,  # No retry
