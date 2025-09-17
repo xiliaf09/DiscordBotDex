@@ -11,6 +11,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - **Alertes volume critiques avec notifications Pushover** (son d'alarme, bypass silencieux/DND)
 - **Appels téléphoniques d'urgence Twilio** pour volumes > 50k USD
 - **Whitelist de mots-clés** pour capturer les projets sans FID correspondant à vos intérêts
+- **Base de données persistante** pour sauvegarder toutes les listes et préférences
 - Affichage des informations détaillées des tokens
 - Tracking des transactions de wallets sur Base
 
@@ -146,6 +147,26 @@ Pour capturer les projets légitimes sans FID qui correspondent à vos intérêt
 
 **Résultat :** Un projet "AI PEPE" ou "DOGE MEME" sans FID sera maintenant affiché sur Discord au lieu d'être ignoré.
 
+### Base de Données Persistante
+
+Le bot utilise maintenant une base de données pour sauvegarder toutes les listes et préférences :
+
+**Avantages :**
+- ✅ **Persistance garantie** entre les redéploiements
+- ✅ **Sauvegarde automatique** de toutes les modifications
+- ✅ **Support PostgreSQL** sur Railway
+- ✅ **Fallback SQLite** pour le développement local
+
+**Migration automatique :**
+- Les données des fichiers JSON sont automatiquement migrées vers la base de données
+- Utilisez `!migratetodb` pour forcer une migration manuelle
+- Compatible avec les anciens fichiers JSON
+
+**Configuration Railway :**
+1. Ajoutez une base PostgreSQL à votre projet Railway
+2. La variable `DATABASE_URL` sera automatiquement configurée
+3. Le bot détectera automatiquement PostgreSQL et l'utilisera
+
 ## Dépendances
 
 - discord.py
@@ -154,7 +175,8 @@ Pour capturer les projets légitimes sans FID qui correspondent à vos intérêt
 - httpx
 - feedparser
 - web3
-- twilio (pour les appels d'urgence)
+- twilio
+- psycopg2-binary (pour PostgreSQL sur Railway)
 
 ## Contribution
 

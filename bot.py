@@ -179,12 +179,206 @@ account = Account.from_key(config.WALLET_PRIVATE_KEY)
 
 # Initialize database
 def init_db():
-    conn = sqlite3.connect('snipes.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS active_snipes
-                 (fid text, amount real, timestamp text)''')
+    # Vérifier le type de base de données
+    database_url = os.getenv('DATABASE_URL')
+    if database_url and database_url.startswith('postgresql://'):
+        # PostgreSQL (Railway)
+        import psycopg2
+        conn = psycopg2.connect(database_url)
+        c = conn.cursor()
+        
+        # Table pour les snipes actifs
+        c.execute('''CREATE TABLE IF NOT EXISTS active_snipes
+                     (fid VARCHAR(255), amount DECIMAL, timestamp VARCHAR(255))''')
+        
+        # Table pour les FIDs bannis
+        c.execute('''CREATE TABLE IF NOT EXISTS banned_fids
+                     (fid VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les FIDs whitelistés
+        c.execute('''CREATE TABLE IF NOT EXISTS whitelisted_fids
+                     (fid VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les mots-clés whitelistés
+        c.execute('''CREATE TABLE IF NOT EXISTS keyword_whitelist
+                     (keyword VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les préférences du bot
+        c.execute('''CREATE TABLE IF NOT EXISTS bot_preferences
+                     (key VARCHAR(255) PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
+    else:
+        # SQLite (local)
+        conn = sqlite3.connect('snipes.db')
+        c = conn.cursor()
+        
+        # Table pour les snipes actifs
+        c.execute('''CREATE TABLE IF NOT EXISTS active_snipes
+                     (fid text, amount real, timestamp text)''')
+        
+        # Table pour les FIDs bannis
+        c.execute('''CREATE TABLE IF NOT EXISTS banned_fids
+                     (fid text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les FIDs whitelistés
+        c.execute('''CREATE TABLE IF NOT EXISTS whitelisted_fids
+                     (fid text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les mots-clés whitelistés
+        c.execute('''CREATE TABLE IF NOT EXISTS keyword_whitelist
+                     (keyword text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # Table pour les préférences du bot
+        c.execute('''CREATE TABLE IF NOT EXISTS bot_preferences
+                     (key text PRIMARY KEY, value text, updated_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
+    
     conn.commit()
     conn.close()
+    logger.info("Database initialized with all tables")
+
+class DatabaseManager:
+    """Gestionnaire de base de données pour toutes les listes et préférences"""
+    
+    def __init__(self):
+        # Vérifier si on utilise PostgreSQL (Railway) ou SQLite (local)
+        self.database_url = os.getenv('DATABASE_URL')
+        if self.database_url and self.database_url.startswith('postgresql://'):
+            self.db_type = 'postgresql'
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            self.psycopg2 = psycopg2
+            self.RealDictCursor = RealDictCursor
+        else:
+            self.db_type = 'sqlite'
+            self.db_path = 'snipes.db'
+    
+    def _get_connection(self):
+        if self.db_type == 'postgresql':
+            return self.psycopg2.connect(self.database_url)
+        else:
+            return sqlite3.connect(self.db_path)
+    
+    # Gestion des FIDs bannis
+    def get_banned_fids(self) -> Set[str]:
+        """Récupère tous les FIDs bannis"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT fid FROM banned_fids")
+        fids = {row[0] for row in c.fetchall()}
+        conn.close()
+        return fids
+    
+    def add_banned_fid(self, fid: str):
+        """Ajoute un FID à la liste des bannis"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO banned_fids (fid) VALUES (?)", (fid,))
+        conn.commit()
+        conn.close()
+    
+    def remove_banned_fid(self, fid: str):
+        """Retire un FID de la liste des bannis"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM banned_fids WHERE fid = ?", (fid,))
+        conn.commit()
+        conn.close()
+    
+    # Gestion des FIDs whitelistés
+    def get_whitelisted_fids(self) -> Set[str]:
+        """Récupère tous les FIDs whitelistés"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT fid FROM whitelisted_fids")
+        fids = {row[0] for row in c.fetchall()}
+        conn.close()
+        return fids
+    
+    def add_whitelisted_fid(self, fid: str):
+        """Ajoute un FID à la whitelist"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO whitelisted_fids (fid) VALUES (?)", (fid,))
+        conn.commit()
+        conn.close()
+    
+    def remove_whitelisted_fid(self, fid: str):
+        """Retire un FID de la whitelist"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM whitelisted_fids WHERE fid = ?", (fid,))
+        conn.commit()
+        conn.close()
+    
+    # Gestion des mots-clés whitelistés
+    def get_keyword_whitelist(self) -> Set[str]:
+        """Récupère tous les mots-clés whitelistés"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT keyword FROM keyword_whitelist")
+        keywords = {row[0] for row in c.fetchall()}
+        conn.close()
+        return keywords
+    
+    def add_keyword(self, keyword: str):
+        """Ajoute un mot-clé à la whitelist"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO keyword_whitelist (keyword) VALUES (?)", (keyword,))
+        conn.commit()
+        conn.close()
+    
+    def remove_keyword(self, keyword: str):
+        """Retire un mot-clé de la whitelist"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM keyword_whitelist WHERE keyword = ?", (keyword,))
+        conn.commit()
+        conn.close()
+    
+    def clear_keywords(self):
+        """Vide complètement la whitelist de mots-clés"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM keyword_whitelist")
+        conn.commit()
+        conn.close()
+    
+    # Gestion des préférences
+    def get_preference(self, key: str, default: str = None) -> str:
+        """Récupère une préférence"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT value FROM bot_preferences WHERE key = ?", (key,))
+        result = c.fetchone()
+        conn.close()
+        return result[0] if result else default
+    
+    def set_preference(self, key: str, value: str):
+        """Définit une préférence"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO bot_preferences (key, value) VALUES (?, ?)", (key, value))
+        conn.commit()
+        conn.close()
+    
+    def get_volume_threshold(self) -> float:
+        """Récupère le seuil de volume par défaut"""
+        value = self.get_preference('default_volume_threshold', '15000')
+        return float(value)
+    
+    def set_volume_threshold(self, threshold: float):
+        """Définit le seuil de volume par défaut"""
+        self.set_preference('default_volume_threshold', str(threshold))
+    
+    def get_emergency_call_threshold(self) -> float:
+        """Récupère le seuil d'appel d'urgence"""
+        value = self.get_preference('emergency_call_threshold', '50000')
+        return float(value)
+    
+    def set_emergency_call_threshold(self, threshold: float):
+        """Définit le seuil d'appel d'urgence"""
+        self.set_preference('emergency_call_threshold', str(threshold))
 
 # Remplace l'ABI du router Uniswap V3
 UNISWAP_V3_ROUTER_ABI = [
@@ -802,6 +996,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!removekeyword <mot>", value="Retire un mot-clé de la whitelist.", inline=False)
         embed.add_field(name="!listkeywords", value="Affiche la liste des mots-clés whitelistés.", inline=False)
         embed.add_field(name="!clearkeywords", value="Vide complètement la whitelist de mots-clés.", inline=False)
+        embed.add_field(name="!migratetodb", value="Migre les données des fichiers JSON vers la base de données.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -814,17 +1009,27 @@ class ClankerMonitor(commands.Cog):
         self.bankr_enabled = True
         self.img_required = False
         self.tracked_clanker_tokens = {}
-        self.default_volume_threshold = 15000
-        self.emergency_call_threshold = 50000  # Seuil pour les appels d'urgence
-        logger.info("Loading banned and whitelisted FIDs...")
-        self.banned_fids: Set[str] = self._load_banned_fids()
-        self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
-        logger.info(f"Loaded {len(self.banned_fids)} banned FIDs and {len(self.whitelisted_fids)} whitelisted FIDs")
         
-        # Load keyword whitelist for projects without FID
-        logger.info("Loading keyword whitelist...")
-        self.keyword_whitelist: Set[str] = self._load_keyword_whitelist()
-        logger.info(f"Loaded {len(self.keyword_whitelist)} whitelisted keywords")
+        # Initialize database manager
+        self.db = DatabaseManager()
+        
+        # Load data from database (with fallback to JSON files)
+        logger.info("Loading data from database...")
+        self.banned_fids: Set[str] = self.db.get_banned_fids()
+        self.whitelisted_fids: Set[str] = self.db.get_whitelisted_fids()
+        self.keyword_whitelist: Set[str] = self.db.get_keyword_whitelist()
+        self.default_volume_threshold = self.db.get_volume_threshold()
+        self.emergency_call_threshold = self.db.get_emergency_call_threshold()
+        
+        # Si la base de données est vide, migrer depuis les fichiers JSON
+        if not self.banned_fids and not self.whitelisted_fids and not self.keyword_whitelist:
+            logger.info("Database appears empty, attempting migration from JSON files...")
+            self._migrate_json_to_db()
+            # Recharger après migration
+            self._refresh_data_from_db()
+        
+        logger.info(f"Loaded from database: {len(self.banned_fids)} banned FIDs, {len(self.whitelisted_fids)} whitelisted FIDs, {len(self.keyword_whitelist)} keywords")
+        logger.info(f"Volume threshold: {self.default_volume_threshold}, Emergency call threshold: {self.emergency_call_threshold}")
         # --- Ajout Web3 WebSocket et contrat factory ---
         self.w3_ws = Web3(Web3.WebsocketProvider(QUICKNODE_WSS))
         self.w3_ws.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -945,6 +1150,43 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error saving keyword whitelist: {e}")
 
+    def _refresh_data_from_db(self):
+        """Rafraîchit les données depuis la base de données"""
+        self.banned_fids = self.db.get_banned_fids()
+        self.whitelisted_fids = self.db.get_whitelisted_fids()
+        self.keyword_whitelist = self.db.get_keyword_whitelist()
+        self.default_volume_threshold = self.db.get_volume_threshold()
+        self.emergency_call_threshold = self.db.get_emergency_call_threshold()
+
+    def _migrate_json_to_db(self):
+        """Migre les données des fichiers JSON vers la base de données"""
+        try:
+            # Migrer les FIDs bannis
+            json_banned = self._load_banned_fids()
+            db_banned = self.db.get_banned_fids()
+            for fid in json_banned:
+                if fid not in db_banned:
+                    self.db.add_banned_fid(fid)
+            
+            # Migrer les FIDs whitelistés
+            json_whitelisted = self._load_whitelisted_fids()
+            db_whitelisted = self.db.get_whitelisted_fids()
+            for fid in json_whitelisted:
+                if fid not in db_whitelisted:
+                    self.db.add_whitelisted_fid(fid)
+            
+            # Migrer les mots-clés
+            json_keywords = self._load_keyword_whitelist()
+            db_keywords = self.db.get_keyword_whitelist()
+            for keyword in json_keywords:
+                if keyword not in db_keywords:
+                    self.db.add_keyword(keyword)
+            
+            logger.info("Migration from JSON to database completed")
+            
+        except Exception as e:
+            logger.error(f"Error during migration: {e}")
+
     def _check_keyword_match(self, name: str, symbol: str) -> bool:
         """Check if token name or symbol matches any whitelisted keyword."""
         if not self.keyword_whitelist:
@@ -968,8 +1210,10 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le FID doit être un nombre.")
             return
             
-        self.banned_fids.add(fid)
-        self._save_banned_fids()  # Sauvegarder immédiatement après modification
+        # Ajouter à la base de données
+        self.db.add_banned_fid(fid)
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ FID {fid} banni avec succès. Vous ne recevrez plus d'alertes de ce compte.")
 
     @commands.command()
@@ -977,8 +1221,10 @@ class ClankerMonitor(commands.Cog):
     async def unbanfid(self, ctx, fid: str):
         """Débannir un FID pour recevoir à nouveau ses alertes de déploiement."""
         if fid in self.banned_fids:
-            self.banned_fids.remove(fid)
-            self._save_banned_fids()  # Sauvegarder immédiatement après modification
+            # Retirer de la base de données
+            self.db.remove_banned_fid(fid)
+            # Rafraîchir les données en mémoire
+            self._refresh_data_from_db()
             await ctx.send(f"✅ FID {fid} débanni avec succès. Vous recevrez à nouveau les alertes de ce compte.")
         else:
             await ctx.send("❌ Ce FID n'est pas banni.")
@@ -1624,7 +1870,10 @@ class ClankerMonitor(commands.Cog):
         if volume_usd <= 0:
             await ctx.send("❌ Le seuil doit être strictement positif.")
             return
-        self.default_volume_threshold = volume_usd
+        # Sauvegarder dans la base de données
+        self.db.set_volume_threshold(volume_usd)
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ Seuil d'alerte global défini à {volume_usd} USD sur 24h pour tous les tokens.")
 
     @commands.command()
@@ -1634,7 +1883,10 @@ class ClankerMonitor(commands.Cog):
         if volume_usd <= 0:
             await ctx.send("❌ Le seuil doit être strictement positif.")
             return
-        self.emergency_call_threshold = volume_usd
+        # Sauvegarder dans la base de données
+        self.db.set_emergency_call_threshold(volume_usd)
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ Seuil d'appel d'urgence défini à {volume_usd} USD. Les appels Twilio se déclencheront pour les volumes >= {volume_usd} USD.")
 
     @commands.command()
@@ -2556,8 +2808,10 @@ class ClankerMonitor(commands.Cog):
             await ctx.send(f"ℹ️ Le mot-clé '{keyword}' est déjà dans la whitelist.")
             return
         
-        self.keyword_whitelist.add(keyword)
-        self._save_keyword_whitelist()
+        # Ajouter à la base de données
+        self.db.add_keyword(keyword)
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ Mot-clé '{keyword}' ajouté à la whitelist. Les projets sans FID contenant ce mot-clé dans leur nom ou symbole seront maintenant affichés.")
         logger.info(f"Keyword '{keyword}' added to whitelist by {ctx.author}")
 
@@ -2570,8 +2824,10 @@ class ClankerMonitor(commands.Cog):
             await ctx.send(f"ℹ️ Le mot-clé '{keyword}' n'est pas dans la whitelist.")
             return
         
-        self.keyword_whitelist.remove(keyword)
-        self._save_keyword_whitelist()
+        # Retirer de la base de données
+        self.db.remove_keyword(keyword)
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ Mot-clé '{keyword}' retiré de la whitelist.")
         logger.info(f"Keyword '{keyword}' removed from whitelist by {ctx.author}")
 
@@ -2612,10 +2868,66 @@ class ClankerMonitor(commands.Cog):
             return
         
         count = len(self.keyword_whitelist)
-        self.keyword_whitelist.clear()
-        self._save_keyword_whitelist()
+        # Vider la base de données
+        self.db.clear_keywords()
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
         await ctx.send(f"✅ Whitelist de mots-clés vidée. {count} mot(s)-clé(s) supprimé(s).")
         logger.info(f"Keyword whitelist cleared by {ctx.author} - {count} keywords removed")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def migratetodb(self, ctx):
+        """Migre les données des fichiers JSON vers la base de données"""
+        try:
+            await ctx.send("🔄 Migration en cours...")
+            
+            # Compter les données avant migration
+            json_banned = self._load_banned_fids()
+            json_whitelisted = self._load_whitelisted_fids()
+            json_keywords = self._load_keyword_whitelist()
+            
+            # Effectuer la migration
+            self._migrate_json_to_db()
+            
+            # Recharger les données
+            self._refresh_data_from_db()
+            
+            # Compter les données après migration
+            db_banned = self.db.get_banned_fids()
+            db_whitelisted = self.db.get_whitelisted_fids()
+            db_keywords = self.db.get_keyword_whitelist()
+            
+            embed = discord.Embed(
+                title="✅ Migration Terminée",
+                description="Données migrées des fichiers JSON vers la base de données",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="FIDs Bannis",
+                value=f"JSON: {len(json_banned)} → DB: {len(db_banned)}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="FIDs Whitelistés",
+                value=f"JSON: {len(json_whitelisted)} → DB: {len(db_whitelisted)}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="Mots-clés",
+                value=f"JSON: {len(json_keywords)} → DB: {len(db_keywords)}",
+                inline=True
+            )
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Manual migration completed by {ctx.author}")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors de la migration: {str(e)}")
+            logger.error(f"Error during manual migration: {e}")
 
     @commands.command(name='exportbanlist')
     @commands.has_permissions(administrator=True)
