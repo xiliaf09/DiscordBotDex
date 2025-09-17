@@ -260,6 +260,91 @@ class DatabaseManager:
         else:
             self.db_type = 'sqlite'
             self.db_path = 'snipes.db'
+        
+        # Initialiser les tables
+        self._init_tables()
+    
+    def _init_tables(self):
+        """Initialise toutes les tables nécessaires"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        
+        try:
+            if self.db_type == 'postgresql':
+                # Tables PostgreSQL
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS banned_fids (
+                        fid VARCHAR(50) PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS whitelisted_fids (
+                        fid VARCHAR(50) PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS keyword_whitelist (
+                        keyword VARCHAR(100) PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS bot_preferences (
+                        key VARCHAR(50) PRIMARY KEY,
+                        value TEXT
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS active_snipes (
+                        id SERIAL PRIMARY KEY,
+                        contract_address VARCHAR(42) UNIQUE,
+                        token_name VARCHAR(100),
+                        token_symbol VARCHAR(20),
+                        fid VARCHAR(50),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            else:
+                # Tables SQLite
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS banned_fids (
+                        fid TEXT PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS whitelisted_fids (
+                        fid TEXT PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS keyword_whitelist (
+                        keyword TEXT PRIMARY KEY
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS bot_preferences (
+                        key TEXT PRIMARY KEY,
+                        value TEXT
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS active_snipes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        contract_address TEXT UNIQUE,
+                        token_name TEXT,
+                        token_symbol TEXT,
+                        fid TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            
+            conn.commit()
+            logger.info("Database tables initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing database tables: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
     
     def _get_connection(self):
         if self.db_type == 'postgresql':
@@ -281,7 +366,10 @@ class DatabaseManager:
         """Ajoute un FID à la liste des bannis"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO banned_fids (fid) VALUES (?)", (fid,))
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO banned_fids (fid) VALUES (%s) ON CONFLICT (fid) DO NOTHING", (fid,))
+        else:
+            c.execute("INSERT OR REPLACE INTO banned_fids (fid) VALUES (?)", (fid,))
         conn.commit()
         conn.close()
     
@@ -289,7 +377,10 @@ class DatabaseManager:
         """Retire un FID de la liste des bannis"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("DELETE FROM banned_fids WHERE fid = ?", (fid,))
+        if self.db_type == 'postgresql':
+            c.execute("DELETE FROM banned_fids WHERE fid = %s", (fid,))
+        else:
+            c.execute("DELETE FROM banned_fids WHERE fid = ?", (fid,))
         conn.commit()
         conn.close()
     
@@ -307,7 +398,10 @@ class DatabaseManager:
         """Ajoute un FID à la whitelist"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO whitelisted_fids (fid) VALUES (?)", (fid,))
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO whitelisted_fids (fid) VALUES (%s) ON CONFLICT (fid) DO NOTHING", (fid,))
+        else:
+            c.execute("INSERT OR REPLACE INTO whitelisted_fids (fid) VALUES (?)", (fid,))
         conn.commit()
         conn.close()
     
@@ -315,7 +409,10 @@ class DatabaseManager:
         """Retire un FID de la whitelist"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("DELETE FROM whitelisted_fids WHERE fid = ?", (fid,))
+        if self.db_type == 'postgresql':
+            c.execute("DELETE FROM whitelisted_fids WHERE fid = %s", (fid,))
+        else:
+            c.execute("DELETE FROM whitelisted_fids WHERE fid = ?", (fid,))
         conn.commit()
         conn.close()
     
@@ -333,7 +430,10 @@ class DatabaseManager:
         """Ajoute un mot-clé à la whitelist"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO keyword_whitelist (keyword) VALUES (?)", (keyword,))
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO keyword_whitelist (keyword) VALUES (%s) ON CONFLICT (keyword) DO NOTHING", (keyword,))
+        else:
+            c.execute("INSERT OR REPLACE INTO keyword_whitelist (keyword) VALUES (?)", (keyword,))
         conn.commit()
         conn.close()
     
@@ -341,7 +441,10 @@ class DatabaseManager:
         """Retire un mot-clé de la whitelist"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("DELETE FROM keyword_whitelist WHERE keyword = ?", (keyword,))
+        if self.db_type == 'postgresql':
+            c.execute("DELETE FROM keyword_whitelist WHERE keyword = %s", (keyword,))
+        else:
+            c.execute("DELETE FROM keyword_whitelist WHERE keyword = ?", (keyword,))
         conn.commit()
         conn.close()
     
@@ -358,7 +461,10 @@ class DatabaseManager:
         """Récupère une préférence"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT value FROM bot_preferences WHERE key = ?", (key,))
+        if self.db_type == 'postgresql':
+            c.execute("SELECT value FROM bot_preferences WHERE key = %s", (key,))
+        else:
+            c.execute("SELECT value FROM bot_preferences WHERE key = ?", (key,))
         result = c.fetchone()
         conn.close()
         return result[0] if result else default
@@ -367,7 +473,10 @@ class DatabaseManager:
         """Définit une préférence"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO bot_preferences (key, value) VALUES (?, ?)", (key, value))
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO bot_preferences (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (key, value))
+        else:
+            c.execute("INSERT OR REPLACE INTO bot_preferences (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
         conn.close()
     
