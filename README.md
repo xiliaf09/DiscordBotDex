@@ -10,6 +10,7 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - Surveillance des nouveaux tokens Clanker
 - **Alertes volume critiques avec notifications Pushover** (son d'alarme, bypass silencieux/DND)
 - **Appels téléphoniques d'urgence Twilio** pour volumes > 50k USD
+- **Whitelist de mots-clés** pour capturer les projets sans FID correspondant à vos intérêts
 - Affichage des informations détaillées des tokens
 - Tracking des transactions de wallets sur Base
 
@@ -38,6 +39,10 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 - `!setemergencycall <montant>` - Définit le seuil d'appel d'urgence Twilio (défaut: 50000 USD)
 - `!testpushover` - Teste la connexion Pushover (admin uniquement)
 - `!testtwilio` - Teste la connexion Twilio avec un appel (admin uniquement)
+- `!addkeyword <mot>` - Ajoute un mot-clé à la whitelist pour les projets sans FID
+- `!removekeyword <mot>` - Retire un mot-clé de la whitelist
+- `!listkeywords` - Affiche la liste des mots-clés whitelistés
+- `!clearkeywords` - Vide complètement la whitelist de mots-clés
 
 ### Commandes de Tracking de Wallet
 - `!track <adresse_wallet>` - Active le suivi des transactions d'un wallet sur Base
@@ -123,6 +128,23 @@ Pour recevoir des appels téléphoniques automatiques sur les gros volumes :
 4. Ajoutez ces clés dans vos variables d'environnement
 
 **Seuil d'appel :** 50 000 USD (configurable avec `!setemergencycall <montant>`)
+
+### Whitelist de Mots-clés (Projets sans FID)
+
+Pour capturer les projets légitimes sans FID qui correspondent à vos intérêts :
+
+1. **Ajoutez des mots-clés** avec `!addkeyword <mot>`
+2. **Les projets sans FID** contenant ces mots-clés dans leur nom ou symbole seront affichés
+3. **Gérez votre liste** avec `!listkeywords`, `!removekeyword`, `!clearkeywords`
+
+**Exemple :**
+```
+!addkeyword pepe
+!addkeyword doge
+!addkeyword ai
+```
+
+**Résultat :** Un projet "AI PEPE" ou "DOGE MEME" sans FID sera maintenant affiché sur Discord au lieu d'être ignoré.
 
 ## Dépendances
 

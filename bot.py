@@ -169,6 +169,7 @@ SEEN_CLANKER_TOKENS_FILE = "seen_clanker_tokens.json"
 TRACKED_WALLETS_FILE = "tracked_wallets.json"
 BANNED_FIDS_FILE = "banned_fids.json"
 WHITELISTED_FIDS_FILE = "whitelisted_fids.json"
+KEYWORD_WHITELIST_FILE = "keyword_whitelist.json"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
 TELEGRAM_USER_ID = os.getenv('TELEGRAM_USER_ID')
 
@@ -797,6 +798,10 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!importwhitelist", value="Importe des listes de FIDs depuis des fichiers texte.", inline=False)
         embed.add_field(name="!exportwhitelist", value="Exporte la liste des FIDs whitelistés dans un fichier.", inline=False)
         embed.add_field(name="!importfollowing <username> <limit>", value="Importe les FIDs des comptes suivis par un utilisateur Warpcast.", inline=False)
+        embed.add_field(name="!addkeyword <mot>", value="Ajoute un mot-clé à la whitelist pour les projets sans FID.", inline=False)
+        embed.add_field(name="!removekeyword <mot>", value="Retire un mot-clé de la whitelist.", inline=False)
+        embed.add_field(name="!listkeywords", value="Affiche la liste des mots-clés whitelistés.", inline=False)
+        embed.add_field(name="!clearkeywords", value="Vide complètement la whitelist de mots-clés.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -815,6 +820,11 @@ class ClankerMonitor(commands.Cog):
         self.banned_fids: Set[str] = self._load_banned_fids()
         self.whitelisted_fids: Set[str] = self._load_whitelisted_fids()
         logger.info(f"Loaded {len(self.banned_fids)} banned FIDs and {len(self.whitelisted_fids)} whitelisted FIDs")
+        
+        # Load keyword whitelist for projects without FID
+        logger.info("Loading keyword whitelist...")
+        self.keyword_whitelist: Set[str] = self._load_keyword_whitelist()
+        logger.info(f"Loaded {len(self.keyword_whitelist)} whitelisted keywords")
         # --- Ajout Web3 WebSocket et contrat factory ---
         self.w3_ws = Web3(Web3.WebsocketProvider(QUICKNODE_WSS))
         self.w3_ws.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -905,6 +915,50 @@ class ClankerMonitor(commands.Cog):
             logger.info(f"Successfully saved {len(fids_to_save)} whitelisted FIDs to {WHITELISTED_FIDS_FILE}")
         except Exception as e:
             logger.error(f"Error saving whitelisted FIDs: {e}")
+
+    def _load_keyword_whitelist(self) -> Set[str]:
+        """Load keyword whitelist from file."""
+        try:
+            if os.path.exists(KEYWORD_WHITELIST_FILE):
+                with open(KEYWORD_WHITELIST_FILE, 'r') as f:
+                    keywords = set(json.load(f))
+                    logger.info(f"Successfully loaded {len(keywords)} whitelisted keywords from {KEYWORD_WHITELIST_FILE}")
+                    return keywords
+            # Si le fichier n'existe pas, le créer avec un ensemble vide
+            logger.info(f"Creating new {KEYWORD_WHITELIST_FILE} file")
+            self._save_keyword_whitelist(set())
+            return set()
+        except Exception as e:
+            logger.error(f"Error loading keyword whitelist: {e}")
+            return set()
+
+    def _save_keyword_whitelist(self, keywords: Set[str] = None):
+        """Save keyword whitelist to file."""
+        try:
+            # Si aucun ensemble n'est fourni, utiliser l'ensemble actuel
+            keywords_to_save = list(keywords if keywords is not None else self.keyword_whitelist)
+            # Créer le répertoire parent si nécessaire
+            os.makedirs(os.path.dirname(KEYWORD_WHITELIST_FILE) or '.', exist_ok=True)
+            with open(KEYWORD_WHITELIST_FILE, 'w') as f:
+                json.dump(keywords_to_save, f, indent=2)
+            logger.info(f"Successfully saved {len(keywords_to_save)} whitelisted keywords to {KEYWORD_WHITELIST_FILE}")
+        except Exception as e:
+            logger.error(f"Error saving keyword whitelist: {e}")
+
+    def _check_keyword_match(self, name: str, symbol: str) -> bool:
+        """Check if token name or symbol matches any whitelisted keyword."""
+        if not self.keyword_whitelist:
+            return False
+        
+        # Convert to lowercase for case-insensitive matching
+        name_lower = name.lower()
+        symbol_lower = symbol.lower()
+        
+        for keyword in self.keyword_whitelist:
+            keyword_lower = keyword.lower()
+            if keyword_lower in name_lower or keyword_lower in symbol_lower:
+                return True
+        return False
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -1763,16 +1817,61 @@ class ClankerMonitor(commands.Cog):
                                 # Vérifier si le FID est whitelisté
                                 is_premium = fid and fid in self.whitelisted_fids
                                 
-                                # Si pas de FID, on ajoute quand même à la surveillance volume mais on n'envoie pas d'alerte Discord
+                                # Si pas de FID, vérifier les mots-clés whitelistés
                                 if not fid:
-                                    logger.info(f"Token sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
-                                    # Ajout à la surveillance volume
-                                    self.tracked_clanker_tokens[token_address.lower()] = {
-                                        'first_seen': time.time(),
-                                        'alerted': False
-                                    }
-                                    logger.info(f"[VOLUME TRACK] Ajout du token sans FID {token_address.lower()} à la surveillance volume (on-chain)")
-                                    continue  # Skip l'envoi de l'alerte Discord
+                                    # Vérifier si le token correspond à un mot-clé whitelisté
+                                    keyword_match = self._check_keyword_match(name, symbol)
+                                    if keyword_match:
+                                        logger.info(f"Token sans FID mais avec mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Envoi d'alerte Discord")
+                                        # Envoyer l'alerte Discord pour les tokens avec mots-clés
+                                        embed = discord.Embed(
+                                            title="🔑 Nouveau Token Clanker (Mot-clé)",
+                                            description=f"Token détecté sans FID mais correspondant à un mot-clé whitelisté",
+                                            color=discord.Color.orange(),
+                                            timestamp=datetime.now(timezone.utc)
+                                        )
+                                        embed.add_field(name="Nom", value=name, inline=True)
+                                        embed.add_field(name="Symbole", value=symbol, inline=True)
+                                        embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
+                                        embed.add_field(name="Image", value=image if image else "Aucune", inline=False)
+                                        
+                                        # Créer la vue avec les boutons
+                                        view = discord.ui.View()
+                                        
+                                        # Bouton Basescan
+                                        basescan_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.secondary,
+                                            label="Basescan",
+                                            url=f"https://basescan.org/token/{token_address}"
+                                        )
+                                        view.add_item(basescan_button)
+                                        
+                                        # Bouton Clanker World
+                                        clanker_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.primary,
+                                            label="Lien Clanker World",
+                                            url=f"https://www.clanker.world/clanker/{token_address}"
+                                        )
+                                        view.add_item(clanker_button)
+                                        
+                                        await channel.send(embed=embed, view=view)
+                                        logger.info(f"On-chain Clanker alert sent for {name} ({symbol}) {token_address} (keyword match)")
+                                        
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
+                                    else:
+                                        logger.info(f"Token sans FID et sans mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token sans FID {token_address.lower()} à la surveillance volume (on-chain)")
+                                    continue  # Skip le reste du traitement normal
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
@@ -1908,16 +2007,61 @@ class ClankerMonitor(commands.Cog):
                                 # Vérifier si le FID est whitelisté
                                 is_premium = fid and fid in self.whitelisted_fids
                                 
-                                # Si pas de FID, on ajoute quand même à la surveillance volume mais on n'envoie pas d'alerte Discord
+                                # Si pas de FID, vérifier les mots-clés whitelistés
                                 if not fid:
-                                    logger.info(f"Token V4 sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
-                                    # Ajout à la surveillance volume
-                                    self.tracked_clanker_tokens[token_address.lower()] = {
-                                        'first_seen': time.time(),
-                                        'alerted': False
-                                    }
-                                    logger.info(f"[VOLUME TRACK] Ajout du token V4 sans FID {token_address.lower()} à la surveillance volume (on-chain)")
-                                    continue  # Skip l'envoi de l'alerte Discord
+                                    # Vérifier si le token correspond à un mot-clé whitelisté
+                                    keyword_match = self._check_keyword_match(name, symbol)
+                                    if keyword_match:
+                                        logger.info(f"Token V4 sans FID mais avec mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Envoi d'alerte Discord")
+                                        # Envoyer l'alerte Discord pour les tokens avec mots-clés
+                                        embed = discord.Embed(
+                                            title="🔑 Nouveau Token Clanker V4 (Mot-clé)",
+                                            description=f"Token V4 détecté sans FID mais correspondant à un mot-clé whitelisté",
+                                            color=discord.Color.orange(),
+                                            timestamp=datetime.now(timezone.utc)
+                                        )
+                                        embed.add_field(name="Nom", value=name, inline=True)
+                                        embed.add_field(name="Symbole", value=symbol, inline=True)
+                                        embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
+                                        embed.add_field(name="Image", value=image if image else "Aucune", inline=False)
+                                        
+                                        # Créer la vue avec les boutons
+                                        view = discord.ui.View()
+                                        
+                                        # Bouton Basescan
+                                        basescan_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.secondary,
+                                            label="Basescan",
+                                            url=f"https://basescan.org/token/{token_address}"
+                                        )
+                                        view.add_item(basescan_button)
+                                        
+                                        # Bouton Clanker World
+                                        clanker_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.primary,
+                                            label="Lien Clanker World",
+                                            url=f"https://www.clanker.world/clanker/{token_address}"
+                                        )
+                                        view.add_item(clanker_button)
+                                        
+                                        await channel.send(embed=embed, view=view)
+                                        logger.info(f"On-chain Clanker V4 alert sent for {name} ({symbol}) {token_address} (keyword match)")
+                                        
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token V4 avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
+                                    else:
+                                        logger.info(f"Token V4 sans FID et sans mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token V4 sans FID {token_address.lower()} à la surveillance volume (on-chain)")
+                                    continue  # Skip le reste du traitement normal
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker V4 Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker V4 (on-chain)",
@@ -2397,6 +2541,81 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             logger.error(f"Error importing whitelist: {e}")
             await status_msg.edit(content="❌ Une erreur est survenue lors de l'importation des fichiers.")
+
+    # Keyword whitelist commands
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def addkeyword(self, ctx, keyword: str):
+        """Ajoute un mot-clé à la whitelist pour les projets sans FID"""
+        if not keyword or len(keyword.strip()) < 2:
+            await ctx.send("❌ Le mot-clé doit contenir au moins 2 caractères.")
+            return
+        
+        keyword = keyword.strip().lower()
+        if keyword in self.keyword_whitelist:
+            await ctx.send(f"ℹ️ Le mot-clé '{keyword}' est déjà dans la whitelist.")
+            return
+        
+        self.keyword_whitelist.add(keyword)
+        self._save_keyword_whitelist()
+        await ctx.send(f"✅ Mot-clé '{keyword}' ajouté à la whitelist. Les projets sans FID contenant ce mot-clé dans leur nom ou symbole seront maintenant affichés.")
+        logger.info(f"Keyword '{keyword}' added to whitelist by {ctx.author}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def removekeyword(self, ctx, keyword: str):
+        """Retire un mot-clé de la whitelist"""
+        keyword = keyword.strip().lower()
+        if keyword not in self.keyword_whitelist:
+            await ctx.send(f"ℹ️ Le mot-clé '{keyword}' n'est pas dans la whitelist.")
+            return
+        
+        self.keyword_whitelist.remove(keyword)
+        self._save_keyword_whitelist()
+        await ctx.send(f"✅ Mot-clé '{keyword}' retiré de la whitelist.")
+        logger.info(f"Keyword '{keyword}' removed from whitelist by {ctx.author}")
+
+    @commands.command()
+    async def listkeywords(self, ctx):
+        """Affiche la liste des mots-clés whitelistés"""
+        if not self.keyword_whitelist:
+            await ctx.send("📝 Aucun mot-clé dans la whitelist.")
+            return
+        
+        keywords_list = sorted(list(self.keyword_whitelist))
+        embed = discord.Embed(
+            title="📝 Mots-clés whitelistés",
+            description=f"Liste des {len(keywords_list)} mots-clés qui déclenchent des alertes pour les projets sans FID:",
+            color=discord.Color.blue()
+        )
+        
+        # Grouper par paquets de 20 pour respecter les limites Discord
+        chunks = [keywords_list[i:i + 20] for i in range(0, len(keywords_list), 20)]
+        
+        for i, chunk in enumerate(chunks):
+            field_text = "\n".join(f"• {keyword}" for keyword in chunk)
+            embed.add_field(
+                name=f"Liste {i+1}/{len(chunks)}",
+                value=field_text,
+                inline=False
+            )
+        
+        embed.set_footer(text="Utilisez !addkeyword <mot> pour ajouter un mot-clé")
+        await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def clearkeywords(self, ctx):
+        """Vide complètement la whitelist de mots-clés"""
+        if not self.keyword_whitelist:
+            await ctx.send("ℹ️ La whitelist de mots-clés est déjà vide.")
+            return
+        
+        count = len(self.keyword_whitelist)
+        self.keyword_whitelist.clear()
+        self._save_keyword_whitelist()
+        await ctx.send(f"✅ Whitelist de mots-clés vidée. {count} mot(s)-clé(s) supprimé(s).")
+        logger.info(f"Keyword whitelist cleared by {ctx.author} - {count} keywords removed")
 
     @commands.command(name='exportbanlist')
     @commands.has_permissions(administrator=True)
