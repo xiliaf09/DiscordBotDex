@@ -1115,6 +1115,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!listkeywords", value="Affiche la liste des mots-clés whitelistés.", inline=False)
         embed.add_field(name="!clearkeywords", value="Vide complètement la whitelist de mots-clés.", inline=False)
         embed.add_field(name="!migratetodb", value="Migre les données des fichiers JSON vers la base de données.", inline=False)
+        embed.add_field(name="!checkdb", value="Vérifie la connexion et l'état de la base de données.", inline=False)
         await ctx.send(embed=embed)
 
 class ClankerMonitor(commands.Cog):
@@ -3046,6 +3047,117 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Erreur lors de la migration: {str(e)}")
             logger.error(f"Error during manual migration: {e}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def checkdb(self, ctx):
+        """Vérifie la connexion et l'état de la base de données"""
+        try:
+            embed = discord.Embed(
+                title="🔍 Vérification de la Base de Données",
+                color=discord.Color.blue()
+            )
+            
+            # Informations sur le type de base de données
+            db_type = self.db.db_type
+            embed.add_field(
+                name="📊 Type de Base",
+                value=f"**{db_type.upper()}**",
+                inline=True
+            )
+            
+            # Test de connexion
+            try:
+                conn = self.db._get_connection()
+                conn.close()
+                connection_status = "✅ **Connecté**"
+                connection_color = discord.Color.green()
+            except Exception as e:
+                connection_status = f"❌ **Erreur**: {str(e)[:100]}"
+                connection_color = discord.Color.red()
+            
+            embed.add_field(
+                name="🔗 Connexion",
+                value=connection_status,
+                inline=True
+            )
+            
+            # Informations sur les données
+            try:
+                banned_count = len(self.db.get_banned_fids())
+                whitelisted_count = len(self.db.get_whitelisted_fids())
+                keywords_count = len(self.db.get_keyword_whitelist())
+                volume_threshold = self.db.get_volume_threshold()
+                emergency_threshold = self.db.get_emergency_call_threshold()
+                
+                embed.add_field(
+                    name="📈 Données Stockées",
+                    value=f"**FIDs Bannis:** {banned_count}\n**FIDs Whitelistés:** {whitelisted_count}\n**Mots-clés:** {keywords_count}",
+                    inline=False
+                )
+                
+                embed.add_field(
+                    name="⚙️ Préférences",
+                    value=f"**Seuil Volume:** {volume_threshold:,.0f} USD\n**Seuil Appel:** {emergency_threshold:,.0f} USD",
+                    inline=False
+                )
+                
+                # Test d'écriture
+                test_key = f"test_connection_{int(time.time())}"
+                self.db.set_preference(test_key, "test_value")
+                test_result = self.db.get_preference(test_key)
+                if test_result == "test_value":
+                    # Nettoyer le test
+                    conn = self.db._get_connection()
+                    c = conn.cursor()
+                    if db_type == 'postgresql':
+                        c.execute("DELETE FROM bot_preferences WHERE key = %s", (test_key,))
+                    else:
+                        c.execute("DELETE FROM bot_preferences WHERE key = ?", (test_key,))
+                    conn.commit()
+                    conn.close()
+                    
+                    write_status = "✅ **Lecture/Écriture OK**"
+                else:
+                    write_status = "❌ **Erreur Lecture/Écriture**"
+                
+                embed.add_field(
+                    name="✏️ Test d'Écriture",
+                    value=write_status,
+                    inline=True
+                )
+                
+            except Exception as e:
+                embed.add_field(
+                    name="❌ Erreur Données",
+                    value=f"Impossible de lire les données: {str(e)[:100]}",
+                    inline=False
+                )
+            
+            # Informations sur l'URL de connexion (masquée)
+            if hasattr(self.db, 'database_url') and self.db.database_url:
+                # Masquer le mot de passe dans l'URL
+                masked_url = self.db.database_url
+                if '@' in masked_url:
+                    parts = masked_url.split('@')
+                    if ':' in parts[0]:
+                        user_pass = parts[0].split(':')
+                        if len(user_pass) >= 2:
+                            masked_url = f"{user_pass[0]}:***@{parts[1]}"
+                
+                embed.add_field(
+                    name="🔗 URL de Connexion",
+                    value=f"`{masked_url}`",
+                    inline=False
+                )
+            
+            embed.color = connection_color
+            await ctx.send(embed=embed)
+            logger.info(f"Database check performed by {ctx.author}")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Erreur lors de la vérification: {str(e)}")
+            logger.error(f"Error during database check: {e}")
 
     @commands.command(name='exportbanlist')
     @commands.has_permissions(administrator=True)
