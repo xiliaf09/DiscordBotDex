@@ -243,11 +243,20 @@ class DatabaseManager:
         # Vérifier si on utilise PostgreSQL (Railway) ou SQLite (local)
         self.database_url = os.getenv('DATABASE_URL')
         if self.database_url and self.database_url.startswith('postgresql://'):
-            self.db_type = 'postgresql'
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
-            self.psycopg2 = psycopg2
-            self.RealDictCursor = RealDictCursor
+            try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                # Tester la connexion
+                test_conn = psycopg2.connect(self.database_url)
+                test_conn.close()
+                self.db_type = 'postgresql'
+                self.psycopg2 = psycopg2
+                self.RealDictCursor = RealDictCursor
+                logger.info("Successfully connected to PostgreSQL database")
+            except Exception as e:
+                logger.warning(f"Failed to connect to PostgreSQL: {e}. Falling back to SQLite.")
+                self.db_type = 'sqlite'
+                self.db_path = 'snipes.db'
         else:
             self.db_type = 'sqlite'
             self.db_path = 'snipes.db'
