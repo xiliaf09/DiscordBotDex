@@ -225,6 +225,9 @@ class DatabaseManager:
             column_names = [col[0] for col in columns]
             has_old_structure = ('fid' in column_names or 'contract_address' in column_names) and 'tracked_address' not in column_names
             has_max_attempts = 'max_attempts' in column_names
+            has_wallet_id = 'wallet_id' in column_names
+            has_tracked_fid = 'tracked_fid' in column_names
+            has_snipe_type = 'snipe_type' in column_names
             
             if has_old_structure:
                 logger.info("🔄 Migration automatique de l'ancienne structure vers la nouvelle...")
@@ -235,12 +238,43 @@ class DatabaseManager:
                 
             elif len(columns) == 0:
                 logger.info("🔄 Création des tables manquantes...")
-            elif not has_max_attempts:
-                logger.info("🔄 Ajout du champ max_attempts à la table active_snipes...")
-                cursor.execute("ALTER TABLE active_snipes ADD COLUMN max_attempts INTEGER DEFAULT 1")
-                logger.info("✅ Champ max_attempts ajouté")
             else:
-                logger.info("✅ Structure de base de données déjà correcte")
+                # Migration progressive des nouveaux champs
+                migrations_needed = []
+                
+                if not has_max_attempts:
+                    migrations_needed.append("max_attempts")
+                if not has_wallet_id:
+                    migrations_needed.append("wallet_id")
+                if not has_tracked_fid:
+                    migrations_needed.append("tracked_fid")
+                if not has_snipe_type:
+                    migrations_needed.append("snipe_type")
+                
+                if migrations_needed:
+                    logger.info(f"🔄 Migration des champs manquants: {', '.join(migrations_needed)}")
+                    
+                    if not has_max_attempts:
+                        cursor.execute("ALTER TABLE active_snipes ADD COLUMN max_attempts INTEGER DEFAULT 1")
+                        logger.info("✅ Champ max_attempts ajouté")
+                    
+                    if not has_wallet_id:
+                        cursor.execute("ALTER TABLE active_snipes ADD COLUMN wallet_id VARCHAR(2) DEFAULT 'W1'")
+                        logger.info("✅ Champ wallet_id ajouté")
+                    
+                    if not has_tracked_fid:
+                        cursor.execute("ALTER TABLE active_snipes ADD COLUMN tracked_fid VARCHAR(50)")
+                        logger.info("✅ Champ tracked_fid ajouté")
+                    
+                    if not has_snipe_type:
+                        cursor.execute("ALTER TABLE active_snipes ADD COLUMN snipe_type VARCHAR(10) DEFAULT 'address'")
+                        logger.info("✅ Champ snipe_type ajouté")
+                    
+                    # Mettre à jour les enregistrements existants
+                    cursor.execute("UPDATE active_snipes SET snipe_type = 'address' WHERE snipe_type IS NULL")
+                    cursor.execute("UPDATE active_snipes SET wallet_id = 'W1' WHERE wallet_id IS NULL")
+                else:
+                    logger.info("✅ Structure de base de données déjà correcte")
                 
         except Exception as e:
             logger.error(f"Erreur lors de la migration PostgreSQL: {e}")
@@ -286,9 +320,12 @@ class DatabaseManager:
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS active_snipes (
                         id SERIAL PRIMARY KEY,
-                        tracked_address VARCHAR(42) NOT NULL,
+                        tracked_address VARCHAR(42),
+                        tracked_fid VARCHAR(50),
                         snipe_amount_eth DECIMAL(18,8) NOT NULL,
                         max_attempts INTEGER DEFAULT 1,
+                        wallet_id VARCHAR(2) DEFAULT 'W1',
+                        snipe_type VARCHAR(10) DEFAULT 'address',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT TRUE,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
@@ -326,9 +363,12 @@ class DatabaseManager:
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS active_snipes (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        tracked_address TEXT NOT NULL,
+                        tracked_address TEXT,
+                        tracked_fid TEXT,
                         snipe_amount_eth REAL NOT NULL,
                         max_attempts INTEGER DEFAULT 1,
+                        wallet_id TEXT DEFAULT 'W1',
+                        snipe_type TEXT DEFAULT 'address',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT 1,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
@@ -532,95 +572,169 @@ class DatabaseManager:
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE is_active = TRUE")
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE is_active = TRUE")
         else:
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE is_active = 1")
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE is_active = 1")
         snipes = []
         for row in c.fetchall():
             snipes.append({
                 'id': row[0],
                 'tracked_address': row[1],
-                'snipe_amount_eth': float(row[2]),
-                'max_attempts': int(row[3]),
-                'created_at': row[4]
+                'tracked_fid': row[2],
+                'snipe_amount_eth': float(row[3]),
+                'max_attempts': int(row[4]),
+                'wallet_id': row[5],
+                'snipe_type': row[6],
+                'created_at': row[7]
             })
         conn.close()
         return snipes
     
-    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float, max_attempts: int = 1):
+    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float, max_attempts: int = 1, wallet_id: str = 'W1', snipe_type: str = 'address', tracked_fid: str = None):
         """Ajoute un snipe actif"""
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth, max_attempts) VALUES (%s, %s, %s)", (tracked_address, snipe_amount_eth, max_attempts))
+            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type) VALUES (%s, %s, %s, %s, %s, %s)", 
+                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type))
         else:
-            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth, max_attempts) VALUES (?, ?, ?)", (tracked_address, snipe_amount_eth, max_attempts))
+            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type) VALUES (?, ?, ?, ?, ?, ?)", 
+                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type))
         conn.commit()
         conn.close()
     
-    def remove_active_snipe(self, tracked_address: str):
+    def remove_active_snipe(self, tracked_address: str = None, tracked_fid: str = None, wallet_id: str = None):
         """Retire un snipe actif"""
         conn = self._get_connection()
         c = conn.cursor()
+        
+        if tracked_address and wallet_id:
+            if self.db_type == 'postgresql':
+                c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s AND wallet_id = %s", (tracked_address, wallet_id))
+            else:
+                c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ? AND wallet_id = ?", (tracked_address, wallet_id))
+        elif tracked_fid and wallet_id:
+            if self.db_type == 'postgresql':
+                c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_fid = %s AND wallet_id = %s", (tracked_fid, wallet_id))
+            else:
+                c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_fid = ? AND wallet_id = ?", (tracked_fid, wallet_id))
+        elif tracked_address:
         if self.db_type == 'postgresql':
             c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s", (tracked_address,))
         else:
             c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ?", (tracked_address,))
+        elif tracked_fid:
+            if self.db_type == 'postgresql':
+                c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_fid = %s", (tracked_fid,))
+            else:
+                c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_fid = ?", (tracked_fid,))
+        
         conn.commit()
         conn.close()
     
-    def get_snipe_for_address(self, tracked_address: str) -> dict:
+    def get_snipe_for_address(self, tracked_address: str, wallet_id: str = None) -> dict:
         """Récupère le snipe actif pour une adresse trackée"""
         conn = self._get_connection()
         c = conn.cursor()
+        
+        if wallet_id:
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND wallet_id = %s AND is_active = TRUE", (tracked_address, wallet_id))
         else:
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND wallet_id = ? AND is_active = 1", (tracked_address, wallet_id))
+        else:
+            if self.db_type == 'postgresql':
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
+            else:
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
+        
         row = c.fetchone()
         conn.close()
         if row:
             return {
                 'id': row[0],
                 'tracked_address': row[1],
-                'snipe_amount_eth': float(row[2]),
-                'max_attempts': int(row[3]),
-                'created_at': row[4]
+                'tracked_fid': row[2],
+                'snipe_amount_eth': float(row[3]),
+                'max_attempts': int(row[4]),
+                'wallet_id': row[5],
+                'snipe_type': row[6],
+                'created_at': row[7]
+            }
+        return None
+    
+    def get_snipe_for_fid(self, tracked_fid: str, wallet_id: str = None) -> dict:
+        """Récupère le snipe actif pour un FID tracké"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        
+        if wallet_id:
+            if self.db_type == 'postgresql':
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = %s AND wallet_id = %s AND is_active = TRUE", (tracked_fid, wallet_id))
+            else:
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = ? AND wallet_id = ? AND is_active = 1", (tracked_fid, wallet_id))
+        else:
+            if self.db_type == 'postgresql':
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = %s AND is_active = TRUE", (tracked_fid,))
+            else:
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = ? AND is_active = 1", (tracked_fid,))
+        
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return {
+                'id': row[0],
+                'tracked_address': row[1],
+                'tracked_fid': row[2],
+                'snipe_amount_eth': float(row[3]),
+                'max_attempts': int(row[4]),
+                'wallet_id': row[5],
+                'snipe_type': row[6],
+                'created_at': row[7]
             }
         return None
 
 class SniperManager:
     """Gestionnaire des snipes utilisant l'API 0x"""
     
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, wallet_id='W1'):
         self.db = db_manager
+        self.wallet_id = wallet_id
         self.w3 = Web3(Web3.HTTPProvider(config.BASE_RPC_URL))
         self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         
-        # Configuration 0x API
+        # Configuration 0x API selon le wallet
         self.zerox_base_url = "https://api.0x.org"
+        if wallet_id == 'W2':
+            self.zerox_api_key = config.ZEROX_API_KEY2
+            self.sniping_private_key = config.SNIPING_WALLET_KEY2
+        else:
+            self.zerox_api_key = config.ZEROX_API_KEY
+            self.sniping_private_key = config.SNIPING_WALLET_KEY
+            
         self.zerox_headers = {
-            "0x-api-key": config.ZEROX_API_KEY,
+            "0x-api-key": self.zerox_api_key,
             "0x-version": "v2",
             "Content-Type": "application/json"
         }
         
         # Vérifier que la clé API est configurée
-        if not config.ZEROX_API_KEY:
-            logger.error("ZEROX_API_KEY not configured - 0x API calls will fail")
+        if not self.zerox_api_key:
+            logger.error(f"ZEROX_API_KEY{'2' if wallet_id == 'W2' else ''} not configured - 0x API calls will fail")
         
         # Configuration Base
         self.chain_id = 8453  # Base chain ID
         self.weth_address = "0x4200000000000000000000000000000000000006"  # WETH on Base
         
-        # Wallet pour le sniping
-        if config.SNIPING_WALLET_KEY:
-            self.sniping_account = Account.from_key(config.SNIPING_WALLET_KEY)
+        # Wallet pour le sniping selon le wallet_id
+        if self.sniping_private_key:
+            self.sniping_account = Account.from_key(self.sniping_private_key)
             self.sniping_address = self.sniping_account.address
+            logger.info(f"Wallet {wallet_id} configuré: {self.sniping_address}")
         else:
             self.sniping_account = None
             self.sniping_address = None
-            logger.warning("SNIPING_WALLET_KEY not configured - sniping disabled")
+            logger.warning(f"SNIPING_WALLET_KEY{'2' if wallet_id == 'W2' else ''} not configured - sniping disabled for {wallet_id}")
     
     async def get_quote(self, sell_token: str, buy_token: str, sell_amount: str) -> dict:
         """Récupère un quote depuis l'API 0x v2"""
@@ -1439,7 +1553,8 @@ class ClankerMonitor(commands.Cog):
         self.db = DatabaseManager()
         
         # Initialize sniper manager
-        self.sniper_manager = SniperManager(self.db)
+        self.sniper_manager_w1 = SniperManager(self.db, 'W1')
+        self.sniper_manager_w2 = SniperManager(self.db, 'W2')
         
         # Load data from database (with fallback to JSON files)
         logger.info("Loading data from database...")
@@ -3733,8 +3848,8 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float, max_attempts: int = 1):
-        """Configure un snipe pour une adresse trackée avec un montant en ETH et un nombre de tentatives."""
+    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float, max_attempts: int, wallet_id: str):
+        """Configure un snipe pour une adresse trackée avec un montant en ETH, un nombre de tentatives et un wallet."""
         # Vérifier que l'adresse est valide
         if not tracked_address.startswith('0x') or len(tracked_address) != 42:
             await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x...")
@@ -3762,36 +3877,47 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 10.")
             return
         
-        # Vérifier la configuration du wallet de sniping
-        if not self.sniper_manager.sniping_account:
-            await ctx.send("❌ Wallet de sniping non configuré. Vérifiez la variable d'environnement SNIPINGWALLETKEY.")
+        # Vérifier le wallet_id
+        if wallet_id not in ['W1', 'W2']:
+            await ctx.send("❌ Le wallet doit être W1 ou W2.")
             return
         
-        # Vérifier s'il y a déjà un snipe actif pour cette adresse
-        existing_snipe = self.db.get_snipe_for_address(tracked_address)
+        # Vérifier la configuration du wallet de sniping
+        sniper_manager = self.sniper_manager_w1 if wallet_id == 'W1' else self.sniper_manager_w2
+        if not sniper_manager.sniping_account:
+            await ctx.send(f"❌ Wallet {wallet_id} de sniping non configuré. Vérifiez la variable d'environnement SNIPINGWALLETKEY{'2' if wallet_id == 'W2' else ''}.")
+            return
+        
+        # Vérifier s'il y a déjà un snipe actif pour cette adresse avec ce wallet
+        existing_snipe = self.db.get_snipe_for_address(tracked_address, wallet_id)
         if existing_snipe:
-            await ctx.send(f"❌ Un snipe est déjà actif pour l'adresse `{tracked_address}` avec un montant de {existing_snipe['snipe_amount_eth']} ETH. Utilisez `!cancelsnipe {tracked_address}` pour l'annuler.")
+            await ctx.send(f"❌ Un snipe est déjà actif pour l'adresse `{tracked_address}` avec le wallet {wallet_id} et un montant de {existing_snipe['snipe_amount_eth']} ETH. Utilisez `!cancelsnipe {tracked_address} {wallet_id}` pour l'annuler.")
             return
         
         # Ajouter le snipe à la base de données
-        self.db.add_active_snipe(tracked_address, eth_amount, max_attempts)
+        self.db.add_active_snipe(tracked_address, eth_amount, max_attempts, wallet_id, 'address')
         
         await ctx.send(f"✅ Snipe configuré avec succès !\n"
                       f"**Adresse trackée:** `{tracked_address}`\n"
                       f"**Montant:** {eth_amount} ETH\n"
                       f"**Tentatives:** {max_attempts}\n"
-                      f"**Wallet de sniping:** `{self.sniper_manager.sniping_address}`\n\n"
+                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`)\n\n"
                       f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker.\n"
                       f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai de 0.5 seconde entre chaque tentative.")
-        logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH (max_attempts: {max_attempts})")
+        logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH (max_attempts: {max_attempts}, wallet: {wallet_id})")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def cancelsnipe(self, ctx, tracked_address: str):
-        """Annule un snipe actif pour une adresse trackée."""
+    async def cancelsnipe(self, ctx, tracked_address: str, wallet_id: str):
+        """Annule un snipe actif pour une adresse trackée avec un wallet spécifique."""
         # Vérifier que l'adresse est valide
         if not tracked_address.startswith('0x') or len(tracked_address) != 42:
             await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x...")
+            return
+        
+        # Vérifier le wallet_id
+        if wallet_id not in ['W1', 'W2']:
+            await ctx.send("❌ Le wallet doit être W1 ou W2.")
             return
         
         # Normaliser l'adresse (checksum)
@@ -3801,17 +3927,97 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Adresse Ethereum invalide.")
             return
         
-        # Vérifier s'il y a un snipe actif
-        existing_snipe = self.db.get_snipe_for_address(tracked_address)
+        # Vérifier s'il y a un snipe actif pour ce wallet
+        existing_snipe = self.db.get_snipe_for_address(tracked_address, wallet_id)
         if not existing_snipe:
             await ctx.send(f"❌ Aucun snipe actif trouvé pour l'adresse `{tracked_address}`.")
             return
         
         # Supprimer le snipe
-        self.db.remove_active_snipe(tracked_address)
+        self.db.remove_active_snipe(tracked_address=tracked_address, wallet_id=wallet_id)
         
-        await ctx.send(f"✅ Snipe annulé avec succès pour l'adresse `{tracked_address}`.")
-        logger.info(f"Snipe cancelled by {ctx.author} for {tracked_address}")
+        await ctx.send(f"✅ Snipe annulé avec succès !\n"
+                      f"**Adresse:** `{tracked_address}`\n"
+                      f"**Wallet:** {wallet_id}\n"
+                      f"**Montant:** {existing_snipe['snipe_amount_eth']} ETH")
+        logger.info(f"Snipe cancelled by {ctx.author}: {tracked_address} (wallet: {wallet_id})")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def setupsnipefid(self, ctx, fid: str, eth_amount: float, max_attempts: int, wallet_id: str):
+        """Configure un snipe pour un FID avec un montant en ETH, un nombre de tentatives et un wallet."""
+        # Vérifier que le FID est valide
+        if not fid.isdigit():
+            await ctx.send("❌ FID invalide. Le FID doit être un nombre.")
+            return
+        
+        # Vérifier le montant
+        if eth_amount <= 0:
+            await ctx.send("❌ Le montant doit être strictement positif.")
+            return
+        
+        # Vérifier le nombre de tentatives
+        if max_attempts < 1 or max_attempts > 10:
+            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 10.")
+            return
+        
+        # Vérifier le wallet_id
+        if wallet_id not in ['W1', 'W2']:
+            await ctx.send("❌ Le wallet doit être W1 ou W2.")
+            return
+        
+        # Vérifier la configuration du wallet de sniping
+        sniper_manager = self.sniper_manager_w1 if wallet_id == 'W1' else self.sniper_manager_w2
+        if not sniper_manager.sniping_account:
+            await ctx.send(f"❌ Wallet {wallet_id} de sniping non configuré. Vérifiez la variable d'environnement SNIPINGWALLETKEY{'2' if wallet_id == 'W2' else ''}.")
+            return
+        
+        # Vérifier s'il y a déjà un snipe actif pour ce FID avec ce wallet
+        existing_snipe = self.db.get_snipe_for_fid(fid, wallet_id)
+        if existing_snipe:
+            await ctx.send(f"❌ Un snipe est déjà actif pour le FID `{fid}` avec le wallet {wallet_id} et un montant de {existing_snipe['snipe_amount_eth']} ETH. Utilisez `!cancelsnipefid {fid} {wallet_id}` pour l'annuler.")
+            return
+        
+        # Ajouter le snipe à la base de données
+        self.db.add_active_snipe(None, eth_amount, max_attempts, wallet_id, 'fid', fid)
+        
+        await ctx.send(f"✅ Snipe FID configuré avec succès !\n"
+                      f"**FID tracké:** `{fid}`\n"
+                      f"**Montant:** {eth_amount} ETH\n"
+                      f"**Tentatives:** {max_attempts}\n"
+                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`)\n\n"
+                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que ce FID déploiera un nouveau clanker.\n"
+                      f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai de 0.5 seconde entre chaque tentative.")
+        logger.info(f"Snipe FID configured by {ctx.author}: {fid} -> {eth_amount} ETH (max_attempts: {max_attempts}, wallet: {wallet_id})")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def cancelsnipefid(self, ctx, fid: str, wallet_id: str):
+        """Annule un snipe actif pour un FID avec un wallet spécifique."""
+        # Vérifier que le FID est valide
+        if not fid.isdigit():
+            await ctx.send("❌ FID invalide. Le FID doit être un nombre.")
+            return
+        
+        # Vérifier le wallet_id
+        if wallet_id not in ['W1', 'W2']:
+            await ctx.send("❌ Le wallet doit être W1 ou W2.")
+            return
+        
+        # Vérifier s'il y a un snipe actif pour ce FID avec ce wallet
+        existing_snipe = self.db.get_snipe_for_fid(fid, wallet_id)
+        if not existing_snipe:
+            await ctx.send(f"❌ Aucun snipe actif trouvé pour le FID `{fid}` avec le wallet {wallet_id}.")
+            return
+        
+        # Supprimer le snipe
+        self.db.remove_active_snipe(tracked_fid=fid, wallet_id=wallet_id)
+        
+        await ctx.send(f"✅ Snipe FID annulé avec succès !\n"
+                      f"**FID:** `{fid}`\n"
+                      f"**Wallet:** {wallet_id}\n"
+                      f"**Montant:** {existing_snipe['snipe_amount_eth']} ETH")
+        logger.info(f"Snipe FID cancelled by {ctx.author}: {fid} (wallet: {wallet_id})")
 
     @commands.command()
     async def listsnipes(self, ctx):
@@ -3829,9 +4035,16 @@ class ClankerMonitor(commands.Cog):
         )
         
         for snipe in snipes:
+            if snipe['snipe_type'] == 'address':
+                name = f"Adresse: `{snipe['tracked_address']}`"
+                target = f"**Adresse:** `{snipe['tracked_address']}`"
+            else:
+                name = f"FID: `{snipe['tracked_fid']}`"
+                target = f"**FID:** `{snipe['tracked_fid']}`"
+            
             embed.add_field(
-                name=f"Adresse: `{snipe['tracked_address']}`",
-                value=f"**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Créé:** {snipe['created_at']}",
+                name=name,
+                value=f"{target}\n**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Wallet:** {snipe['wallet_id']}\n**Type:** {snipe['snipe_type']}\n**Créé:** {snipe['created_at']}",
                 inline=False
             )
         
@@ -3873,22 +4086,38 @@ class ClankerMonitor(commands.Cog):
         """Exécute un snipe automatique pour un token déployé par une adresse trackée avec retry."""
         try:
             eth_amount = snipe_config['snipe_amount_eth']
-            tracked_address = snipe_config['tracked_address']
+            tracked_address = snipe_config.get('tracked_address')
+            tracked_fid = snipe_config.get('tracked_fid')
             max_attempts = snipe_config.get('max_attempts', 1)
+            wallet_id = snipe_config.get('wallet_id', 'W1')
+            snipe_type = snipe_config.get('snipe_type', 'address')
             
-            logger.info(f"🎯 Début du snipe automatique: {eth_amount} ETH -> {token_address} ({token_name}) - {max_attempts} tentatives max")
+            # Sélectionner le bon SniperManager
+            sniper_manager = self.sniper_manager_w1 if wallet_id == 'W1' else self.sniper_manager_w2
+            
+            # Déterminer la cible trackée
+            if snipe_type == 'address':
+                tracked_target = f"Adresse: `{tracked_address}`"
+                tracked_value = tracked_address
+            else:
+                tracked_target = f"FID: `{tracked_fid}`"
+                tracked_value = tracked_fid
+            
+            logger.info(f"🎯 Début du snipe automatique: {eth_amount} ETH -> {token_address} ({token_name}) - {max_attempts} tentatives max - Wallet: {wallet_id}")
             
             # Envoyer une notification de début de snipe
             snipe_embed = discord.Embed(
                 title="🎯 Snipe Automatique en Cours",
-                description=f"Exécution du snipe configuré pour l'adresse trackée",
+                description=f"Exécution du snipe configuré pour {tracked_target}",
                 color=discord.Color.orange(),
                 timestamp=datetime.now(timezone.utc)
             )
             snipe_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
             snipe_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
             snipe_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
-            snipe_embed.add_field(name="Adresse Trackée", value=f"`{tracked_address}`", inline=False)
+            snipe_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
+            snipe_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
+            snipe_embed.add_field(name="Cible Trackée", value=f"`{tracked_value}`", inline=False)
             snipe_embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
             
             status_msg = await channel.send(embed=snipe_embed)
@@ -3900,58 +4129,62 @@ class ClankerMonitor(commands.Cog):
                     
                     # Mettre à jour l'embed avec le numéro de tentative
                     if attempt > 1:
-                        snipe_embed.description = f"Exécution du snipe configuré pour l'adresse trackée (Tentative {attempt}/{max_attempts})"
+                        snipe_embed.description = f"Exécution du snipe configuré pour {tracked_target} (Tentative {attempt}/{max_attempts})"
                         await status_msg.edit(embed=snipe_embed)
-                    
-                    # Exécuter le snipe
-                    result = await self.sniper_manager.snipe_token(token_address, eth_amount)
-                    
-                    if result["success"]:
-                        # Succès du snipe
-                        success_embed = discord.Embed(
-                            title="✅ Snipe Réussi !",
+            
+            # Exécuter le snipe
+                    result = await sniper_manager.snipe_token(token_address, eth_amount)
+            
+            if result["success"]:
+                # Succès du snipe
+                success_embed = discord.Embed(
+                    title="✅ Snipe Réussi !",
                             description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
-                            color=discord.Color.green(),
-                            timestamp=datetime.now(timezone.utc)
-                        )
-                        success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                        success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                    color=discord.Color.green(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
                         success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
-                        success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
-                        success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
-                        success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
-                        
-                        # Ajouter un bouton vers la transaction
-                        view = discord.ui.View()
-                        tx_button = discord.ui.Button(
-                            style=discord.ButtonStyle.primary,
-                            label="Voir Transaction",
-                            url=f"https://basescan.org/tx/{result['tx_hash']}"
-                        )
-                        view.add_item(tx_button)
-                        
-                        await status_msg.edit(embed=success_embed, view=view)
+                        success_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
+                        success_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
+                success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
+                success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
+                success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
+                
+                # Ajouter un bouton vers la transaction
+                view = discord.ui.View()
+                tx_button = discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Voir Transaction",
+                    url=f"https://basescan.org/tx/{result['tx_hash']}"
+                )
+                view.add_item(tx_button)
+                
+                await status_msg.edit(embed=success_embed, view=view)
                         logger.info(f"✅ Snipe automatique réussi à la tentative {attempt}: {result['tx_hash']}")
                         return  # Succès, sortir de la boucle
-                    
-                    else:
+                
+            else:
                         # Échec de cette tentative
                         logger.warning(f"⚠️ Tentative {attempt}/{max_attempts} échouée: {result['error']}")
                         
                         # Si c'est la dernière tentative, afficher l'erreur finale
                         if attempt == max_attempts:
-                            error_embed = discord.Embed(
-                                title="❌ Échec du Snipe",
+                error_embed = discord.Embed(
+                    title="❌ Échec du Snipe",
                                 description=f"Le snipe automatique a échoué après {max_attempts} tentatives",
-                                color=discord.Color.red(),
-                                timestamp=datetime.now(timezone.utc)
-                            )
-                            error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                            error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                    color=discord.Color.red(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
                             error_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
+                            error_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
+                            error_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
                             error_embed.add_field(name="Dernière Erreur", value=f"`{result['error']}`", inline=False)
-                            
-                            await status_msg.edit(embed=error_embed)
+                
+                await status_msg.edit(embed=error_embed)
                             logger.error(f"❌ Échec du snipe automatique après {max_attempts} tentatives: {result['error']}")
                         else:
                             # Attendre 0.5 seconde avant la prochaine tentative
