@@ -221,8 +221,11 @@ class DatabaseManager:
             columns = cursor.fetchall()
             logger.info(f"Structure actuelle active_snipes: {columns}")
             
-            # Si la table a l'ancienne structure (fid, amount, timestamp)
-            if len(columns) == 3 and any('fid' in col[0] for col in columns):
+            # Vérifier si la table a l'ancienne structure (contient 'fid' ou 'contract_address' mais pas 'tracked_address')
+            column_names = [col[0] for col in columns]
+            has_old_structure = ('fid' in column_names or 'contract_address' in column_names) and 'tracked_address' not in column_names
+            
+            if has_old_structure:
                 logger.info("🔄 Migration automatique de l'ancienne structure vers la nouvelle...")
                 
                 # Supprimer l'ancienne table
@@ -231,6 +234,8 @@ class DatabaseManager:
                 
             elif len(columns) == 0:
                 logger.info("🔄 Création des tables manquantes...")
+            else:
+                logger.info("✅ Structure de base de données déjà correcte")
                 
         except Exception as e:
             logger.error(f"Erreur lors de la migration PostgreSQL: {e}")
