@@ -26,6 +26,8 @@ CLANKER_API_SECRET = os.getenv('CLANKER_API_SECRET')
 DEFAULT_SLIPPAGE = 100  # 1%
 GAS_LIMIT = 300000
 PRIORITY_FEE = 1.5  # gwei
+SNIPING_WALLET_KEY = os.getenv('SNIPINGWALLETKEY')  # Private key for sniping wallet
+ZEROX_API_KEY = os.getenv('ZEROX_API_KEY')  # 0x API key
 
 # Command Prefix
 COMMAND_PREFIX = "!"
