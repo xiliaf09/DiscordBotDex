@@ -3782,7 +3782,7 @@ class ClankerMonitor(commands.Cog):
                       f"**Tentatives:** {max_attempts}\n"
                       f"**Wallet de sniping:** `{self.sniper_manager.sniping_address}`\n\n"
                       f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker.\n"
-                      f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai d'1 seconde entre chaque tentative.")
+                      f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai de 0.5 seconde entre chaque tentative.")
         logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH (max_attempts: {max_attempts})")
 
     @commands.command()
@@ -3954,9 +3954,9 @@ class ClankerMonitor(commands.Cog):
                             await status_msg.edit(embed=error_embed)
                             logger.error(f"❌ Échec du snipe automatique après {max_attempts} tentatives: {result['error']}")
                         else:
-                            # Attendre 1 seconde avant la prochaine tentative
-                            logger.info(f"⏳ Attente de 1 seconde avant la tentative {attempt + 1}")
-                            await asyncio.sleep(1)
+                            # Attendre 0.5 seconde avant la prochaine tentative
+                            logger.info(f"⏳ Attente de 0.5 seconde avant la tentative {attempt + 1}")
+                            await asyncio.sleep(0.5)
                 
                 except Exception as e:
                     logger.error(f"Erreur lors de la tentative {attempt}: {e}")
@@ -3971,8 +3971,8 @@ class ClankerMonitor(commands.Cog):
                         error_embed.add_field(name="Erreur", value=f"`{str(e)}`", inline=False)
                         await status_msg.edit(embed=error_embed)
                     else:
-                        # Attendre 1 seconde avant la prochaine tentative
-                        await asyncio.sleep(1)
+                        # Attendre 0.5 seconde avant la prochaine tentative
+                        await asyncio.sleep(0.5)
                 
         except Exception as e:
             logger.error(f"Erreur lors de l'exécution du snipe automatique: {e}")

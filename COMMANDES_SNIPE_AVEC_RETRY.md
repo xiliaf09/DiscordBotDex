@@ -4,7 +4,7 @@
 
 ### ✨ **Système de Retry Automatique**
 - **Nombre de tentatives configurable** : De 1 à 10 tentatives
-- **Délai entre tentatives** : 1 seconde automatique
+- **Délai entre tentatives** : 0.5 seconde automatique
 - **Gestion intelligente des échecs** : Retry automatique en cas d'échec de liquidité
 
 ---
@@ -35,7 +35,7 @@ Configure un snipe avec un nombre de tentatives personnalisé.
 **Wallet de sniping:** `0x...`
 
 Le bot achètera automatiquement 0.001 ETH du token dès que cette adresse déploiera un nouveau clanker.
-En cas d'échec, le bot réessaiera jusqu'à 5 fois avec un délai d'1 seconde entre chaque tentative.
+En cas d'échec, le bot réessaiera jusqu'à 5 fois avec un délai de 0.5 seconde entre chaque tentative.
 ```
 
 ### 2. **`!listsnipes`** (Mise à jour)
@@ -62,10 +62,10 @@ Adresse: `0x3883890A0C0983bE825E353b809A96aC4fA0077e`
 2. **Lancement du snipe automatique** avec le nombre de tentatives configuré
 3. **Tentative 1** : Exécution du swap
    - ✅ **Succès** → Transaction confirmée, snipe terminé
-   - ❌ **Échec** → Attente de 1 seconde, passage à la tentative 2
+   - ❌ **Échec** → Attente de 0.5 seconde, passage à la tentative 2
 4. **Tentative 2** : Nouvelle exécution du swap
    - ✅ **Succès** → Transaction confirmée, snipe terminé
-   - ❌ **Échec** → Attente de 1 seconde, passage à la tentative 3
+   - ❌ **Échec** → Attente de 0.5 seconde, passage à la tentative 3
 5. **...** (jusqu'au nombre maximum de tentatives)
 6. **Dernière tentative** : Si échec, affichage de l'erreur finale
 
@@ -146,12 +146,12 @@ Dernière Erreur: Insufficient liquidity for this trade
 
 ### **Limites :**
 - **Maximum 10 tentatives** par snipe
-- **Délai fixe de 1 seconde** entre chaque tentative
+- **Délai fixe de 0.5 seconde** entre chaque tentative
 - **Pas de backoff exponentiel** (délai constant)
 
 ### **Considérations :**
 - **Gas fees** : Chaque tentative consomme du gas
-- **Temps total** : 10 tentatives = ~10 secondes maximum
+- **Temps total** : 10 tentatives = ~5 secondes maximum
 - **Liquidité** : Le retry ne garantit pas le succès si la liquidité reste insuffisante
 
 ---
@@ -172,7 +172,7 @@ La base de données est automatiquement migrée pour inclure le champ `max_attem
 🎯 Début du snipe automatique: 0.001 ETH -> 0x77E5... (etest) - 5 tentatives max
 🔄 Tentative 1/5 du snipe automatique
 ⚠️ Tentative 1/5 échouée: Insufficient liquidity for this trade
-⏳ Attente de 1 seconde avant la tentative 2
+⏳ Attente de 0.5 seconde avant la tentative 2
 🔄 Tentative 2/5 du snipe automatique
 ✅ Snipe automatique réussi à la tentative 2: 0x1234...5678
 ```
@@ -197,7 +197,7 @@ La base de données est automatiquement migrée pour inclure le champ `max_attem
 # 1. Détection du token V4
 # 2. Lancement du snipe avec 5 tentatives
 # 3. Tentative 1: Échec (liquidité insuffisante)
-# 4. Attente 1 seconde
+# 4. Attente 0.5 seconde
 # 5. Tentative 2: Succès ✅
 # 6. Transaction confirmée sur Basescan
 ```
@@ -209,7 +209,7 @@ La base de données est automatiquement migrée pour inclure le champ `max_attem
 1. **Résilience** : Gestion automatique des échecs temporaires
 2. **Flexibilité** : Nombre de tentatives personnalisable
 3. **Transparence** : Messages en temps réel sur Discord
-4. **Efficacité** : Délai optimisé de 1 seconde
+4. **Efficacité** : Délai optimisé de 0.5 seconde
 5. **Sécurité** : Limite de 10 tentatives maximum
 6. **Compatibilité** : Migration automatique de la base de données
 
