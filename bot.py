@@ -224,6 +224,7 @@ class DatabaseManager:
             # Vérifier si la table a l'ancienne structure (contient 'fid' ou 'contract_address' mais pas 'tracked_address')
             column_names = [col[0] for col in columns]
             has_old_structure = ('fid' in column_names or 'contract_address' in column_names) and 'tracked_address' not in column_names
+            has_max_attempts = 'max_attempts' in column_names
             
             if has_old_structure:
                 logger.info("🔄 Migration automatique de l'ancienne structure vers la nouvelle...")
@@ -234,6 +235,10 @@ class DatabaseManager:
                 
             elif len(columns) == 0:
                 logger.info("🔄 Création des tables manquantes...")
+            elif not has_max_attempts:
+                logger.info("🔄 Ajout du champ max_attempts à la table active_snipes...")
+                cursor.execute("ALTER TABLE active_snipes ADD COLUMN max_attempts INTEGER DEFAULT 1")
+                logger.info("✅ Champ max_attempts ajouté")
             else:
                 logger.info("✅ Structure de base de données déjà correcte")
                 
@@ -283,6 +288,7 @@ class DatabaseManager:
                         id SERIAL PRIMARY KEY,
                         tracked_address VARCHAR(42) NOT NULL,
                         snipe_amount_eth DECIMAL(18,8) NOT NULL,
+                        max_attempts INTEGER DEFAULT 1,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT TRUE,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
@@ -322,6 +328,7 @@ class DatabaseManager:
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         tracked_address TEXT NOT NULL,
                         snipe_amount_eth REAL NOT NULL,
+                        max_attempts INTEGER DEFAULT 1,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT 1,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
@@ -525,28 +532,29 @@ class DatabaseManager:
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE is_active = TRUE")
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE is_active = TRUE")
         else:
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE is_active = 1")
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE is_active = 1")
         snipes = []
         for row in c.fetchall():
             snipes.append({
                 'id': row[0],
                 'tracked_address': row[1],
                 'snipe_amount_eth': float(row[2]),
-                'created_at': row[3]
+                'max_attempts': int(row[3]),
+                'created_at': row[4]
             })
         conn.close()
         return snipes
     
-    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float):
+    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float, max_attempts: int = 1):
         """Ajoute un snipe actif"""
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth) VALUES (%s, %s)", (tracked_address, snipe_amount_eth))
+            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth, max_attempts) VALUES (%s, %s, %s)", (tracked_address, snipe_amount_eth, max_attempts))
         else:
-            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth) VALUES (?, ?)", (tracked_address, snipe_amount_eth))
+            c.execute("INSERT INTO active_snipes (tracked_address, snipe_amount_eth, max_attempts) VALUES (?, ?, ?)", (tracked_address, snipe_amount_eth, max_attempts))
         conn.commit()
         conn.close()
     
@@ -566,9 +574,9 @@ class DatabaseManager:
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
         else:
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, max_attempts, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
         row = c.fetchone()
         conn.close()
         if row:
@@ -576,7 +584,8 @@ class DatabaseManager:
                 'id': row[0],
                 'tracked_address': row[1],
                 'snipe_amount_eth': float(row[2]),
-                'created_at': row[3]
+                'max_attempts': int(row[3]),
+                'created_at': row[4]
             }
         return None
 
@@ -3724,8 +3733,8 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float):
-        """Configure un snipe pour une adresse trackée avec un montant en ETH."""
+    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float, max_attempts: int = 1):
+        """Configure un snipe pour une adresse trackée avec un montant en ETH et un nombre de tentatives."""
         # Vérifier que l'adresse est valide
         if not tracked_address.startswith('0x') or len(tracked_address) != 42:
             await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x...")
@@ -3748,6 +3757,11 @@ class ClankerMonitor(commands.Cog):
             await ctx.send("❌ Le montant doit être strictement positif.")
             return
         
+        # Vérifier le nombre de tentatives
+        if max_attempts < 1 or max_attempts > 10:
+            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 10.")
+            return
+        
         # Vérifier la configuration du wallet de sniping
         if not self.sniper_manager.sniping_account:
             await ctx.send("❌ Wallet de sniping non configuré. Vérifiez la variable d'environnement SNIPINGWALLETKEY.")
@@ -3760,14 +3774,16 @@ class ClankerMonitor(commands.Cog):
             return
         
         # Ajouter le snipe à la base de données
-        self.db.add_active_snipe(tracked_address, eth_amount)
+        self.db.add_active_snipe(tracked_address, eth_amount, max_attempts)
         
         await ctx.send(f"✅ Snipe configuré avec succès !\n"
                       f"**Adresse trackée:** `{tracked_address}`\n"
                       f"**Montant:** {eth_amount} ETH\n"
+                      f"**Tentatives:** {max_attempts}\n"
                       f"**Wallet de sniping:** `{self.sniper_manager.sniping_address}`\n\n"
-                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker.")
-        logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH")
+                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker.\n"
+                      f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai d'1 seconde entre chaque tentative.")
+        logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH (max_attempts: {max_attempts})")
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -3815,7 +3831,7 @@ class ClankerMonitor(commands.Cog):
         for snipe in snipes:
             embed.add_field(
                 name=f"Adresse: `{snipe['tracked_address']}`",
-                value=f"**Montant:** {snipe['snipe_amount_eth']} ETH\n**Créé:** {snipe['created_at']}",
+                value=f"**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Créé:** {snipe['created_at']}",
                 inline=False
             )
         
@@ -3854,12 +3870,13 @@ class ClankerMonitor(commands.Cog):
             await status_msg.edit(content=f"❌ Erreur lors du test de snipe: {str(e)}")
 
     async def _execute_snipe(self, token_address: str, snipe_config: dict, token_name: str, token_symbol: str, channel):
-        """Exécute un snipe automatique pour un token déployé par une adresse trackée."""
+        """Exécute un snipe automatique pour un token déployé par une adresse trackée avec retry."""
         try:
             eth_amount = snipe_config['snipe_amount_eth']
             tracked_address = snipe_config['tracked_address']
+            max_attempts = snipe_config.get('max_attempts', 1)
             
-            logger.info(f"🎯 Début du snipe automatique: {eth_amount} ETH -> {token_address} ({token_name})")
+            logger.info(f"🎯 Début du snipe automatique: {eth_amount} ETH -> {token_address} ({token_name}) - {max_attempts} tentatives max")
             
             # Envoyer une notification de début de snipe
             snipe_embed = discord.Embed(
@@ -3870,54 +3887,92 @@ class ClankerMonitor(commands.Cog):
             )
             snipe_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
             snipe_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+            snipe_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
             snipe_embed.add_field(name="Adresse Trackée", value=f"`{tracked_address}`", inline=False)
             snipe_embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
             
             status_msg = await channel.send(embed=snipe_embed)
             
-            # Exécuter le snipe
-            result = await self.sniper_manager.snipe_token(token_address, eth_amount)
-            
-            if result["success"]:
-                # Succès du snipe
-                success_embed = discord.Embed(
-                    title="✅ Snipe Réussi !",
-                    description=f"Snipe automatique exécuté avec succès",
-                    color=discord.Color.green(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
-                success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
-                success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
-                success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
+            # Exécuter le snipe avec retry
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    logger.info(f"🔄 Tentative {attempt}/{max_attempts} du snipe automatique")
+                    
+                    # Mettre à jour l'embed avec le numéro de tentative
+                    if attempt > 1:
+                        snipe_embed.description = f"Exécution du snipe configuré pour l'adresse trackée (Tentative {attempt}/{max_attempts})"
+                        await status_msg.edit(embed=snipe_embed)
+                    
+                    # Exécuter le snipe
+                    result = await self.sniper_manager.snipe_token(token_address, eth_amount)
+                    
+                    if result["success"]:
+                        # Succès du snipe
+                        success_embed = discord.Embed(
+                            title="✅ Snipe Réussi !",
+                            description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
+                            color=discord.Color.green(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                        success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                        success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
+                        success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
+                        success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
+                        success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
+                        
+                        # Ajouter un bouton vers la transaction
+                        view = discord.ui.View()
+                        tx_button = discord.ui.Button(
+                            style=discord.ButtonStyle.primary,
+                            label="Voir Transaction",
+                            url=f"https://basescan.org/tx/{result['tx_hash']}"
+                        )
+                        view.add_item(tx_button)
+                        
+                        await status_msg.edit(embed=success_embed, view=view)
+                        logger.info(f"✅ Snipe automatique réussi à la tentative {attempt}: {result['tx_hash']}")
+                        return  # Succès, sortir de la boucle
+                    
+                    else:
+                        # Échec de cette tentative
+                        logger.warning(f"⚠️ Tentative {attempt}/{max_attempts} échouée: {result['error']}")
+                        
+                        # Si c'est la dernière tentative, afficher l'erreur finale
+                        if attempt == max_attempts:
+                            error_embed = discord.Embed(
+                                title="❌ Échec du Snipe",
+                                description=f"Le snipe automatique a échoué après {max_attempts} tentatives",
+                                color=discord.Color.red(),
+                                timestamp=datetime.now(timezone.utc)
+                            )
+                            error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                            error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                            error_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
+                            error_embed.add_field(name="Dernière Erreur", value=f"`{result['error']}`", inline=False)
+                            
+                            await status_msg.edit(embed=error_embed)
+                            logger.error(f"❌ Échec du snipe automatique après {max_attempts} tentatives: {result['error']}")
+                        else:
+                            # Attendre 1 seconde avant la prochaine tentative
+                            logger.info(f"⏳ Attente de 1 seconde avant la tentative {attempt + 1}")
+                            await asyncio.sleep(1)
                 
-                # Ajouter un bouton vers la transaction
-                view = discord.ui.View()
-                tx_button = discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="Voir Transaction",
-                    url=f"https://basescan.org/tx/{result['tx_hash']}"
-                )
-                view.add_item(tx_button)
-                
-                await status_msg.edit(embed=success_embed, view=view)
-                logger.info(f"✅ Snipe automatique réussi: {result['tx_hash']}")
-                
-            else:
-                # Échec du snipe
-                error_embed = discord.Embed(
-                    title="❌ Échec du Snipe",
-                    description=f"Le snipe automatique a échoué",
-                    color=discord.Color.red(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
-                error_embed.add_field(name="Erreur", value=f"`{result['error']}`", inline=False)
-                
-                await status_msg.edit(embed=error_embed)
-                logger.error(f"❌ Échec du snipe automatique: {result['error']}")
+                except Exception as e:
+                    logger.error(f"Erreur lors de la tentative {attempt}: {e}")
+                    if attempt == max_attempts:
+                        # Dernière tentative, afficher l'erreur
+                        error_embed = discord.Embed(
+                            title="❌ Erreur Snipe",
+                            description=f"Erreur lors de l'exécution du snipe automatique (Tentative {attempt}/{max_attempts})",
+                            color=discord.Color.red(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        error_embed.add_field(name="Erreur", value=f"`{str(e)}`", inline=False)
+                        await status_msg.edit(embed=error_embed)
+                    else:
+                        # Attendre 1 seconde avant la prochaine tentative
+                        await asyncio.sleep(1)
                 
         except Exception as e:
             logger.error(f"Erreur lors de l'exécution du snipe automatique: {e}")
