@@ -658,6 +658,8 @@ class SniperManager:
                 "taker": self.sniping_address
             }
             
+            logger.info(f"Getting 0x quote: {sell_token} -> {buy_token}, amount: {sell_amount}")
+            
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.zerox_base_url}/swap/allowance-holder/quote",
@@ -667,7 +669,16 @@ class SniperManager:
                 )
                 
                 if response.status_code == 200:
-                    return response.json()
+                    quote_data = response.json()
+                    logger.info(f"0x quote received: {quote_data}")
+                    
+                    # Vérifier si le quote contient des données de transaction
+                    if 'tx' in quote_data:
+                        logger.info("Quote contains transaction data")
+                    else:
+                        logger.warning("Quote does not contain transaction data")
+                    
+                    return quote_data
                 else:
                     logger.error(f"0x API quote error: {response.status_code} - {response.text}")
                     return None
@@ -685,7 +696,39 @@ class SniperManager:
             # Récupérer la transaction depuis le quote
             tx_data = quote.get('tx')
             if not tx_data:
-                raise Exception("No transaction data in quote")
+                # Si pas de tx dans le quote, essayer de récupérer les données de transaction
+                logger.info("No tx data in quote, attempting to get transaction data...")
+                
+                # Construire les paramètres pour la requête de transaction
+                params = {
+                    "chainId": self.chain_id,
+                    "sellToken": quote.get('sellToken'),
+                    "buyToken": quote.get('buyToken'),
+                    "sellAmount": quote.get('sellAmount'),
+                    "taker": self.sniping_address,
+                    "skipValidation": "true"
+                }
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"{self.zerox_base_url}/swap/allowance-holder/quote",
+                        headers=self.zerox_headers,
+                        params=params,
+                        timeout=10.0
+                    )
+                    
+                    if response.status_code == 200:
+                        tx_quote = response.json()
+                        logger.info(f"Transaction quote received: {tx_quote}")
+                        tx_data = tx_quote.get('tx')
+                        if not tx_data:
+                            # Essayer une approche différente - construire la transaction manuellement
+                            logger.info("Attempting to build transaction manually...")
+                            tx_data = await self._build_transaction_manually(quote)
+                            if not tx_data:
+                                raise Exception("No transaction data available from 0x API")
+                    else:
+                        raise Exception(f"Failed to get transaction data: {response.status_code} - {response.text}")
             
             # Signer et envoyer la transaction
             signed_txn = self.w3.eth.account.sign_transaction(tx_data, self.sniping_account.key)
@@ -697,6 +740,38 @@ class SniperManager:
         except Exception as e:
             logger.error(f"Error executing snipe swap: {e}")
             raise
+    
+    async def _build_transaction_manually(self, quote: dict) -> dict:
+        """Construit une transaction manuellement si l'API 0x ne fournit pas les données de transaction"""
+        try:
+            # Récupérer les informations nécessaires du quote
+            sell_token = quote.get('sellToken')
+            buy_token = quote.get('buyToken')
+            sell_amount = quote.get('sellAmount')
+            buy_amount = quote.get('buyAmount')
+            
+            if not all([sell_token, buy_token, sell_amount, buy_amount]):
+                logger.error("Missing required quote data for manual transaction building")
+                return None
+            
+            # Construire la transaction de base
+            transaction = {
+                'from': self.sniping_address,
+                'to': quote.get('to', '0xDef1C0ded9bec7F1a1670819833240f027b25EfF'),  # 0x Exchange Proxy
+                'value': int(sell_amount) if sell_token.lower() == self.weth_address.lower() else 0,
+                'gas': 300000,
+                'gasPrice': self.w3.eth.gas_price,
+                'nonce': self.w3.eth.get_transaction_count(self.sniping_address),
+                'chainId': self.chain_id,
+                'data': quote.get('data', '0x')
+            }
+            
+            logger.info(f"Built manual transaction: {transaction}")
+            return transaction
+            
+        except Exception as e:
+            logger.error(f"Error building manual transaction: {e}")
+            return None
     
     async def snipe_token(self, token_address: str, eth_amount: float) -> dict:
         """Effectue un snipe d'un token avec un montant en ETH"""
