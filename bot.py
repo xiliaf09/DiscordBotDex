@@ -207,6 +207,34 @@ class DatabaseManager:
         # Initialiser les tables
         self._init_tables()
     
+    def _migrate_postgresql_tables(self, cursor):
+        """Migre automatiquement les tables PostgreSQL vers la nouvelle structure"""
+        try:
+            # Vérifier la structure actuelle de active_snipes
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'active_snipes'
+                ORDER BY ordinal_position;
+            """)
+            
+            columns = cursor.fetchall()
+            logger.info(f"Structure actuelle active_snipes: {columns}")
+            
+            # Si la table a l'ancienne structure (fid, amount, timestamp)
+            if len(columns) == 3 and any('fid' in col[0] for col in columns):
+                logger.info("🔄 Migration automatique de l'ancienne structure vers la nouvelle...")
+                
+                # Supprimer l'ancienne table
+                cursor.execute("DROP TABLE IF EXISTS active_snipes CASCADE")
+                logger.info("✅ Ancienne table active_snipes supprimée")
+                
+            elif len(columns) == 0:
+                logger.info("🔄 Création des tables manquantes...")
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de la migration PostgreSQL: {e}")
+    
     def _init_tables(self):
         """Initialise toutes les tables nécessaires"""
         conn = self._get_connection()
@@ -214,6 +242,9 @@ class DatabaseManager:
         
         try:
             if self.db_type == 'postgresql':
+                # Migration automatique pour PostgreSQL
+                self._migrate_postgresql_tables(c)
+                
                 # Tables PostgreSQL
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS banned_fids (
@@ -234,16 +265,6 @@ class DatabaseManager:
                     CREATE TABLE IF NOT EXISTS bot_preferences (
                         key VARCHAR(50) PRIMARY KEY,
                         value TEXT
-                    )
-                """)
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS active_snipes (
-                        id SERIAL PRIMARY KEY,
-                        contract_address VARCHAR(42) UNIQUE,
-                        token_name VARCHAR(100),
-                        token_symbol VARCHAR(20),
-                        fid VARCHAR(50),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 c.execute("""
@@ -283,16 +304,6 @@ class DatabaseManager:
                     CREATE TABLE IF NOT EXISTS bot_preferences (
                         key TEXT PRIMARY KEY,
                         value TEXT
-                    )
-                """)
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS active_snipes (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        contract_address TEXT UNIQUE,
-                        token_name TEXT,
-                        token_symbol TEXT,
-                        fid TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 c.execute("""
