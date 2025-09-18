@@ -524,7 +524,10 @@ class DatabaseManager:
         """Récupère tous les snipes actifs"""
         conn = self._get_connection()
         c = conn.cursor()
-        c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE is_active = 1")
+        if self.db_type == 'postgresql':
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE is_active = TRUE")
+        else:
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE is_active = 1")
         snipes = []
         for row in c.fetchall():
             snipes.append({
@@ -563,7 +566,7 @@ class DatabaseManager:
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = 1", (tracked_address,))
+            c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
         else:
             c.execute("SELECT id, tracked_address, snipe_amount_eth, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
         row = c.fetchone()
