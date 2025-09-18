@@ -741,6 +741,20 @@ class SniperManager:
                     else:
                         raise Exception(f"Failed to get transaction data: {response.status_code} - {response.text}")
             
+            # S'assurer que tous les champs requis sont présents
+            if 'nonce' not in tx_data:
+                nonce = self.w3.eth.get_transaction_count(self.sniping_address)
+                tx_data['nonce'] = nonce
+                logger.info(f"Added nonce to transaction: {nonce}")
+            
+            if 'from' not in tx_data:
+                tx_data['from'] = self.sniping_address
+                
+            if 'chainId' not in tx_data:
+                tx_data['chainId'] = self.chain_id
+            
+            logger.info(f"Final transaction data: {tx_data}")
+            
             # Signer et envoyer la transaction
             signed_txn = self.w3.eth.account.sign_transaction(tx_data, self.sniping_account.key)
             tx_hash = self.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
