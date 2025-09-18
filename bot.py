@@ -2775,6 +2775,14 @@ class ClankerMonitor(commands.Cog):
                                         await channel.send(embed=embed, view=view)
                                         logger.info(f"On-chain Clanker V4 tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
                                         
+                                        # Vérifier s'il y a un snipe actif pour cette adresse
+                                        snipe_config = self.db.get_snipe_for_address(creator_address)
+                                        if snipe_config:
+                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} - Exécution du snipe sur {token_address}")
+                                            
+                                            # Exécuter le snipe en arrière-plan
+                                            asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
+                                        
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
@@ -2905,6 +2913,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         await channel.send(embed=embed, view=view)
                                         logger.info(f"On-chain Clanker V4 tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
+                                        
+                                        # Vérifier s'il y a un snipe actif pour cette adresse
+                                        snipe_config = self.db.get_snipe_for_address(creator_address)
+                                        if snipe_config:
+                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} - Exécution du snipe sur {token_address}")
+                                            
+                                            # Exécuter le snipe en arrière-plan
+                                            asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
