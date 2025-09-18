@@ -4137,14 +4137,14 @@ class ClankerMonitor(commands.Cog):
             
             if result["success"]:
                 # Succès du snipe
-                success_embed = discord.Embed(
-                    title="✅ Snipe Réussi !",
+                        success_embed = discord.Embed(
+                            title="✅ Snipe Réussi !",
                             description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
-                    color=discord.Color.green(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                            color=discord.Color.green(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                        success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
                         success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
                         success_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
                         success_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
