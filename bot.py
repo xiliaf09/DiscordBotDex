@@ -693,8 +693,8 @@ class SniperManager:
             if not self.sniping_account:
                 raise Exception("Sniping wallet not configured")
             
-            # Récupérer la transaction depuis le quote
-            tx_data = quote.get('tx')
+            # Récupérer la transaction depuis le quote (peut être dans 'tx' ou 'transaction')
+            tx_data = quote.get('tx') or quote.get('transaction')
             if not tx_data:
                 # Si pas de tx dans le quote, essayer de récupérer les données de transaction
                 logger.info("No tx data in quote, attempting to get transaction data...")
@@ -754,16 +754,19 @@ class SniperManager:
                 logger.error("Missing required quote data for manual transaction building")
                 return None
             
-            # Construire la transaction de base
+            # Utiliser les données de transaction du quote si disponibles
+            transaction_data = quote.get('transaction', {})
+            
+            # Construire la transaction avec les vraies données du quote
             transaction = {
                 'from': self.sniping_address,
-                'to': quote.get('to', '0xDef1C0ded9bec7F1a1670819833240f027b25EfF'),  # 0x Exchange Proxy
-                'value': int(sell_amount) if sell_token.lower() == self.weth_address.lower() else 0,
-                'gas': 300000,
-                'gasPrice': self.w3.eth.gas_price,
+                'to': transaction_data.get('to', '0xDef1C0ded9bec7F1a1670819833240f027b25EfF'),
+                'value': int(transaction_data.get('value', 0)),
+                'gas': int(transaction_data.get('gas', 300000)),
+                'gasPrice': int(transaction_data.get('gasPrice', self.w3.eth.gas_price)),
                 'nonce': self.w3.eth.get_transaction_count(self.sniping_address),
                 'chainId': self.chain_id,
-                'data': quote.get('data', '0x')
+                'data': transaction_data.get('data', '0x')
             }
             
             logger.info(f"Built manual transaction: {transaction}")
@@ -782,6 +785,13 @@ class SniperManager:
             # Convertir ETH en wei
             eth_amount_wei = self.w3.to_wei(eth_amount, 'ether')
             
+            # Vérifier la balance WETH du wallet
+            weth_balance = self.w3.eth.get_balance(self.sniping_address)
+            logger.info(f"Wallet ETH balance: {weth_balance} wei ({self.w3.from_wei(weth_balance, 'ether')} ETH)")
+            
+            if weth_balance < eth_amount_wei:
+                raise Exception(f"Insufficient ETH balance. Required: {eth_amount} ETH, Available: {self.w3.from_wei(weth_balance, 'ether')} ETH")
+            
             # Récupérer un quote
             quote = await self.get_quote(
                 sell_token=self.weth_address,
@@ -791,6 +801,18 @@ class SniperManager:
             
             if not quote:
                 raise Exception("Failed to get quote from 0x API")
+            
+            # Vérifier les issues du quote
+            issues = quote.get('issues', {})
+            if issues:
+                logger.warning(f"Quote has issues: {issues}")
+                # Vérifier spécifiquement la balance
+                balance_issue = issues.get('balance', {})
+                if balance_issue:
+                    actual_balance = int(balance_issue.get('actual', 0))
+                    expected_balance = int(balance_issue.get('expected', 0))
+                    if actual_balance < expected_balance:
+                        raise Exception(f"Insufficient token balance. Required: {expected_balance} wei, Available: {actual_balance} wei")
             
             # Exécuter le swap
             tx_hash = await self.execute_swap(quote)
