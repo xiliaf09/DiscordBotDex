@@ -2692,6 +2692,15 @@ class ClankerMonitor(commands.Cog):
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
+                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        if fid:
+                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
+                                            if snipe_config_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                                
+                                                # Exécuter le snipe en arrière-plan
+                                                asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
+                                        
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
@@ -2936,6 +2945,15 @@ class ClankerMonitor(commands.Cog):
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
+                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        if fid:
+                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
+                                            if snipe_config_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                                
+                                                # Exécuter le snipe en arrière-plan
+                                                asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
+                                        
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
@@ -3075,6 +3093,15 @@ class ClankerMonitor(commands.Cog):
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
+                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        if fid:
+                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
+                                            if snipe_config_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                                
+                                                # Exécuter le snipe en arrière-plan
+                                                asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
+                                        
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
@@ -3129,6 +3156,16 @@ class ClankerMonitor(commands.Cog):
                                 view.add_item(photon_button)
                                 await channel.send(embed=embed, view=view)
                                 logger.info(f"On-chain Clanker V4 alert sent for {name} ({symbol}) {token_address}")
+                                
+                                # Vérifier s'il y a un snipe actif pour ce FID
+                                if fid:
+                                    snipe_config_fid = self.db.get_snipe_for_fid(fid)
+                                    if snipe_config_fid:
+                                        logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                        
+                                        # Exécuter le snipe en arrière-plan
+                                        asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
+                                
                                 # Ajout à la surveillance volume
                                 self.tracked_clanker_tokens[token_address.lower()] = {
                                     'first_seen': time.time(),
@@ -4160,7 +4197,7 @@ class ClankerMonitor(commands.Cog):
                     if attempt > 1:
                         snipe_embed.description = f"Exécution du snipe configuré pour {tracked_target} (Tentative {attempt}/{max_attempts})"
                         await status_msg.edit(embed=snipe_embed)
-                        
+            
                         # Exécuter le snipe
                         result = await sniper_manager.snipe_token(token_address, eth_amount)
                         
