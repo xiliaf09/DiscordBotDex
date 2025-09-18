@@ -619,10 +619,10 @@ class DatabaseManager:
             else:
                 c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_fid = ? AND wallet_id = ?", (tracked_fid, wallet_id))
         elif tracked_address:
-        if self.db_type == 'postgresql':
-            c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s", (tracked_address,))
-        else:
-            c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ?", (tracked_address,))
+            if self.db_type == 'postgresql':
+                c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s", (tracked_address,))
+            else:
+                c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ?", (tracked_address,))
         elif tracked_fid:
             if self.db_type == 'postgresql':
                 c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_fid = %s", (tracked_fid,))
@@ -638,9 +638,9 @@ class DatabaseManager:
         c = conn.cursor()
         
         if wallet_id:
-        if self.db_type == 'postgresql':
+            if self.db_type == 'postgresql':
                 c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND wallet_id = %s AND is_active = TRUE", (tracked_address, wallet_id))
-        else:
+            else:
                 c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND wallet_id = ? AND is_active = 1", (tracked_address, wallet_id))
         else:
             if self.db_type == 'postgresql':
@@ -4133,65 +4133,65 @@ class ClankerMonitor(commands.Cog):
                     if attempt > 1:
                         snipe_embed.description = f"Exécution du snipe configuré pour {tracked_target} (Tentative {attempt}/{max_attempts})"
                         await status_msg.edit(embed=snipe_embed)
-            
-            # Exécuter le snipe
-                    result = await sniper_manager.snipe_token(token_address, eth_amount)
-            
-            if result["success"]:
-                # Succès du snipe
-                success_embed = discord.Embed(
-                    title="✅ Snipe Réussi !",
-                            description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
-                    color=discord.Color.green(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
-                        success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
-                        success_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
-                        success_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
-                success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
-                success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
-                success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
-                
-                # Ajouter un bouton vers la transaction
-                view = discord.ui.View()
-                tx_button = discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="Voir Transaction",
-                    url=f"https://basescan.org/tx/{result['tx_hash']}"
-                )
-                view.add_item(tx_button)
-                
-                await status_msg.edit(embed=success_embed, view=view)
-                        logger.info(f"✅ Snipe automatique réussi à la tentative {attempt}: {result['tx_hash']}")
-                        return  # Succès, sortir de la boucle
-                
-            else:
-                        # Échec de cette tentative
-                        logger.warning(f"⚠️ Tentative {attempt}/{max_attempts} échouée: {result['error']}")
                         
-                        # Si c'est la dernière tentative, afficher l'erreur finale
-                        if attempt == max_attempts:
-                error_embed = discord.Embed(
-                    title="❌ Échec du Snipe",
-                                description=f"Le snipe automatique a échoué après {max_attempts} tentatives",
-                    color=discord.Color.red(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
-                error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
-                            error_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
-                            error_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
-                            error_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
-                            error_embed.add_field(name="Dernière Erreur", value=f"`{result['error']}`", inline=False)
+                        # Exécuter le snipe
+                        result = await sniper_manager.snipe_token(token_address, eth_amount)
+                        
+                        if result["success"]:
+                            # Succès du snipe
+                            success_embed = discord.Embed(
+                                title="✅ Snipe Réussi !",
+                                description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
+                                color=discord.Color.green(),
+                                timestamp=datetime.now(timezone.utc)
+                            )
+                            success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                            success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                            success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
+                            success_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
+                            success_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
+                            success_embed.add_field(name="Transaction", value=f"`{result['tx_hash']}`", inline=False)
+                            success_embed.add_field(name="Tokens Achetés", value=f"{result['buy_amount']} wei", inline=True)
+                            success_embed.add_field(name="ETH Vendus", value=f"{result['sell_amount']} wei", inline=True)
+                            
+                            # Ajouter un bouton vers la transaction
+                            view = discord.ui.View()
+                            tx_button = discord.ui.Button(
+                                style=discord.ButtonStyle.primary,
+                                label="Voir Transaction",
+                                url=f"https://basescan.org/tx/{result['tx_hash']}"
+                            )
+                            view.add_item(tx_button)
+                            
+                            await status_msg.edit(embed=success_embed, view=view)
+                            logger.info(f"✅ Snipe automatique réussi à la tentative {attempt}: {result['tx_hash']}")
+                            return  # Succès, sortir de la boucle
                 
-                await status_msg.edit(embed=error_embed)
-                            logger.error(f"❌ Échec du snipe automatique après {max_attempts} tentatives: {result['error']}")
                         else:
-                            # Attendre 0.5 seconde avant la prochaine tentative
-                            logger.info(f"⏳ Attente de 0.5 seconde avant la tentative {attempt + 1}")
-                            await asyncio.sleep(0.5)
+                            # Échec de cette tentative
+                            logger.warning(f"⚠️ Tentative {attempt}/{max_attempts} échouée: {result['error']}")
+                        
+                            # Si c'est la dernière tentative, afficher l'erreur finale
+                            if attempt == max_attempts:
+                                error_embed = discord.Embed(
+                                    title="❌ Échec du Snipe",
+                                    description=f"Le snipe automatique a échoué après {max_attempts} tentatives",
+                                    color=discord.Color.red(),
+                                    timestamp=datetime.now(timezone.utc)
+                                )
+                                error_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
+                                error_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
+                                error_embed.add_field(name="Tentatives", value=f"{max_attempts}", inline=True)
+                                error_embed.add_field(name="Wallet", value=f"{wallet_id}", inline=True)
+                                error_embed.add_field(name="Type", value=f"{snipe_type}", inline=True)
+                                error_embed.add_field(name="Dernière Erreur", value=f"`{result['error']}`", inline=False)
+                                
+                                await status_msg.edit(embed=error_embed)
+                                logger.error(f"❌ Échec du snipe automatique après {max_attempts} tentatives: {result['error']}")
+                            else:
+                                # Attendre 0.5 seconde avant la prochaine tentative
+                                logger.info(f"⏳ Attente de 0.5 seconde avant la tentative {attempt + 1}")
+                                await asyncio.sleep(0.5)
                 
                 except Exception as e:
                     logger.error(f"Erreur lors de la tentative {attempt}: {e}")
