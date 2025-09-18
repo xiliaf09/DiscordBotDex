@@ -619,10 +619,10 @@ class DatabaseManager:
             else:
                 c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_fid = ? AND wallet_id = ?", (tracked_fid, wallet_id))
         elif tracked_address:
-            if self.db_type == 'postgresql':
-                c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s", (tracked_address,))
-            else:
-                c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ?", (tracked_address,))
+        if self.db_type == 'postgresql':
+            c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_address = %s", (tracked_address,))
+        else:
+            c.execute("UPDATE active_snipes SET is_active = 0 WHERE tracked_address = ?", (tracked_address,))
         elif tracked_fid:
             if self.db_type == 'postgresql':
                 c.execute("UPDATE active_snipes SET is_active = FALSE WHERE tracked_fid = %s", (tracked_fid,))
@@ -638,9 +638,9 @@ class DatabaseManager:
         c = conn.cursor()
         
         if wallet_id:
-            if self.db_type == 'postgresql':
+        if self.db_type == 'postgresql':
                 c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND wallet_id = %s AND is_active = TRUE", (tracked_address, wallet_id))
-            else:
+        else:
                 c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND wallet_id = ? AND is_active = 1", (tracked_address, wallet_id))
         else:
             if self.db_type == 'postgresql':
@@ -4132,17 +4132,17 @@ class ClankerMonitor(commands.Cog):
                         snipe_embed.description = f"Exécution du snipe configuré pour {tracked_target} (Tentative {attempt}/{max_attempts})"
                         await status_msg.edit(embed=snipe_embed)
             
-                    # Exécuter le snipe
+            # Exécuter le snipe
                     result = await sniper_manager.snipe_token(token_address, eth_amount)
-                    
-                    if result["success"]:
-                        # Succès du snipe
-                        success_embed = discord.Embed(
-                            title="✅ Snipe Réussi !",
+            
+            if result["success"]:
+                # Succès du snipe
+                success_embed = discord.Embed(
+                    title="✅ Snipe Réussi !",
                             description=f"Snipe automatique exécuté avec succès (Tentative {attempt}/{max_attempts})",
-                            color=discord.Color.green(),
-                            timestamp=datetime.now(timezone.utc)
-                        )
+                    color=discord.Color.green(),
+                    timestamp=datetime.now(timezone.utc)
+                )
                 success_embed.add_field(name="Token", value=f"{token_name} ({token_symbol})", inline=True)
                 success_embed.add_field(name="Montant", value=f"{eth_amount} ETH", inline=True)
                         success_embed.add_field(name="Tentative", value=f"{attempt}/{max_attempts}", inline=True)
