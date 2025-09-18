@@ -273,8 +273,36 @@ class DatabaseManager:
                     # Mettre à jour les enregistrements existants
                     cursor.execute("UPDATE active_snipes SET snipe_type = 'address' WHERE snipe_type IS NULL")
                     cursor.execute("UPDATE active_snipes SET wallet_id = 'W1' WHERE wallet_id IS NULL")
+                    
+                    # Modifier la contrainte de tracked_address pour permettre NULL (pour les snipes par FID)
+                    try:
+                        cursor.execute("ALTER TABLE active_snipes ALTER COLUMN tracked_address DROP NOT NULL")
+                        logger.info("✅ Contrainte NOT NULL supprimée de tracked_address")
+                    except Exception as e:
+                        logger.warning(f"Impossible de modifier la contrainte tracked_address: {e}")
+                    
+                    # Supprimer la contrainte de clé étrangère si elle existe
+                    try:
+                        cursor.execute("ALTER TABLE active_snipes DROP CONSTRAINT IF EXISTS active_snipes_tracked_address_fkey")
+                        logger.info("✅ Contrainte de clé étrangère supprimée de tracked_address")
+                    except Exception as e:
+                        logger.warning(f"Impossible de supprimer la contrainte de clé étrangère: {e}")
                 else:
                     logger.info("✅ Structure de base de données déjà correcte")
+                    
+                    # Vérifier et modifier la contrainte de tracked_address si nécessaire
+                    try:
+                        cursor.execute("ALTER TABLE active_snipes ALTER COLUMN tracked_address DROP NOT NULL")
+                        logger.info("✅ Contrainte NOT NULL supprimée de tracked_address")
+                    except Exception as e:
+                        logger.warning(f"Contrainte tracked_address déjà modifiée ou erreur: {e}")
+                    
+                    # Supprimer la contrainte de clé étrangère si elle existe
+                    try:
+                        cursor.execute("ALTER TABLE active_snipes DROP CONSTRAINT IF EXISTS active_snipes_tracked_address_fkey")
+                        logger.info("✅ Contrainte de clé étrangère supprimée de tracked_address")
+                    except Exception as e:
+                        logger.warning(f"Impossible de supprimer la contrainte de clé étrangère: {e}")
                 
         except Exception as e:
             logger.error(f"Erreur lors de la migration PostgreSQL: {e}")
@@ -327,8 +355,7 @@ class DatabaseManager:
                         wallet_id VARCHAR(2) DEFAULT 'W1',
                         snipe_type VARCHAR(10) DEFAULT 'address',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        is_active BOOLEAN DEFAULT TRUE,
-                        FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
+                        is_active BOOLEAN DEFAULT TRUE
                     )
                 """)
             else:
