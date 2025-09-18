@@ -177,64 +177,7 @@ TELEGRAM_USER_ID = os.getenv('TELEGRAM_USER_ID')
 w3 = Web3(Web3.HTTPProvider('https://mainnet.base.org'))
 account = Account.from_key(config.WALLET_PRIVATE_KEY)
 
-# Initialize database
-def init_db():
-    # Vérifier le type de base de données
-    database_url = os.getenv('DATABASE_URL')
-    if database_url and database_url.startswith('postgresql://'):
-        # PostgreSQL (Railway)
-        import psycopg2
-        conn = psycopg2.connect(database_url)
-        c = conn.cursor()
-        
-        # Table pour les snipes actifs
-        c.execute('''CREATE TABLE IF NOT EXISTS active_snipes
-                     (fid VARCHAR(255), amount DECIMAL, timestamp VARCHAR(255))''')
-        
-        # Table pour les FIDs bannis
-        c.execute('''CREATE TABLE IF NOT EXISTS banned_fids
-                     (fid VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les FIDs whitelistés
-        c.execute('''CREATE TABLE IF NOT EXISTS whitelisted_fids
-                     (fid VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les mots-clés whitelistés
-        c.execute('''CREATE TABLE IF NOT EXISTS keyword_whitelist
-                     (keyword VARCHAR(255) PRIMARY KEY, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les préférences du bot
-        c.execute('''CREATE TABLE IF NOT EXISTS bot_preferences
-                     (key VARCHAR(255) PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        
-    else:
-        # SQLite (local)
-        conn = sqlite3.connect('snipes.db')
-        c = conn.cursor()
-        
-        # Table pour les snipes actifs
-        c.execute('''CREATE TABLE IF NOT EXISTS active_snipes
-                     (fid text, amount real, timestamp text)''')
-        
-        # Table pour les FIDs bannis
-        c.execute('''CREATE TABLE IF NOT EXISTS banned_fids
-                     (fid text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les FIDs whitelistés
-        c.execute('''CREATE TABLE IF NOT EXISTS whitelisted_fids
-                     (fid text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les mots-clés whitelistés
-        c.execute('''CREATE TABLE IF NOT EXISTS keyword_whitelist
-                     (keyword text PRIMARY KEY, added_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
-        
-        # Table pour les préférences du bot
-        c.execute('''CREATE TABLE IF NOT EXISTS bot_preferences
-                     (key text PRIMARY KEY, value text, updated_at timestamp DEFAULT CURRENT_TIMESTAMP)''')
-    
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized with all tables")
+# Database initialization is now handled by DatabaseManager class
 
 class DatabaseManager:
     """Gestionnaire de base de données pour toutes les listes et préférences"""
