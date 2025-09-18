@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
+CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))
 BASESCAN_API_KEY = os.getenv('BASESCAN_API_KEY')
 
 # Constants
@@ -634,6 +634,10 @@ class SniperManager:
             "Content-Type": "application/json"
         }
         
+        # Vérifier que la clé API est configurée
+        if not config.ZEROX_API_KEY:
+            logger.error("ZEROX_API_KEY not configured - 0x API calls will fail")
+        
         # Configuration Base
         self.chain_id = 8453  # Base chain ID
         self.weth_address = "0x4200000000000000000000000000000000000006"  # WETH on Base
@@ -648,10 +652,14 @@ class SniperManager:
             logger.warning("SNIPING_WALLET_KEY not configured - sniping disabled")
     
     async def get_quote(self, sell_token: str, buy_token: str, sell_amount: str) -> dict:
-        """Récupère un quote depuis l'API 0x"""
+        """Récupère un quote depuis l'API 0x v2"""
         try:
-            # Utiliser l'endpoint v1 pour obtenir une transaction complète
-            endpoint = "/swap/v1/quote"
+            # Vérifier que la clé API est configurée
+            if not config.ZEROX_API_KEY:
+                raise Exception("0x API key not configured")
+            
+            # Utiliser l'endpoint v2 pour obtenir un quote
+            endpoint = "/swap/allowance-holder/quote"
             
             # Si on vend de l'ETH natif, utiliser l'adresse spéciale
             if sell_token.lower() == self.weth_address.lower():
@@ -662,10 +670,11 @@ class SniperManager:
                 "sellToken": sell_token,
                 "buyToken": buy_token,
                 "sellAmount": sell_amount,
-                "taker": self.sniping_address
+                "taker": self.sniping_address,
+                "slippageBps": "100"  # 1% slippage par défaut
             }
             
-            logger.info(f"Getting 0x v1 quote: {sell_token} -> {buy_token}, amount: {sell_amount}")
+            logger.info(f"Getting 0x v2 quote: {sell_token} -> {buy_token}, amount: {sell_amount}")
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -677,80 +686,59 @@ class SniperManager:
                 
                 if response.status_code == 200:
                     quote_data = response.json()
-                    logger.info(f"0x v1 quote received: {quote_data}")
+                    logger.info(f"0x v2 quote received: {quote_data}")
                     
                     # Vérifier si le quote contient des données de transaction
-                    if 'tx' in quote_data or 'transaction' in quote_data:
+                    if 'transaction' in quote_data:
                         logger.info("Quote contains transaction data")
                     else:
                         logger.warning("Quote does not contain transaction data")
                     
                     return quote_data
                 else:
-                    logger.error(f"0x API v1 quote error: {response.status_code} - {response.text}")
+                    logger.error(f"0x API v2 quote error: {response.status_code} - {response.text}")
                     return None
                     
         except Exception as e:
-            logger.error(f"Error getting 0x v1 quote: {e}")
+            logger.error(f"Error getting 0x v2 quote: {e}")
             return None
     
     async def execute_swap(self, quote: dict) -> str:
-        """Exécute un swap basé sur un quote 0x"""
+        """Exécute un swap basé sur un quote 0x v2"""
         try:
             if not self.sniping_account:
                 raise Exception("Sniping wallet not configured")
             
-            # Récupérer la transaction depuis le quote (peut être dans 'tx' ou 'transaction')
-            tx_data = quote.get('tx') or quote.get('transaction')
+            # Récupérer la transaction depuis le quote v2
+            tx_data = quote.get('transaction')
             if not tx_data:
-                # Si pas de tx dans le quote, essayer de récupérer les données de transaction
-                logger.info("No tx data in quote, attempting to get transaction data...")
-                
-                # Construire les paramètres pour la requête de transaction
-                sell_token = quote.get('sellToken')
-                if sell_token and sell_token.lower() == self.weth_address.lower():
-                    sell_token = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"  # ETH natif
-                
-                params = {
-                    "chainId": self.chain_id,
-                    "sellToken": sell_token,
-                    "buyToken": quote.get('buyToken'),
-                    "sellAmount": quote.get('sellAmount'),
-                    "taker": self.sniping_address,
-                    "skipValidation": "true"
-                }
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{self.zerox_base_url}/swap/v1/quote",
-                        headers=self.zerox_headers,
-                        params=params,
-                        timeout=10.0
-                    )
-                    
-                    if response.status_code == 200:
-                        tx_quote = response.json()
-                        logger.info(f"Transaction quote received: {tx_quote}")
-                        tx_data = tx_quote.get('tx')
-                        if not tx_data:
-                            # Essayer une approche différente - construire la transaction manuellement
-                            logger.info("Attempting to build transaction manually...")
-                            tx_data = await self._build_transaction_manually(quote)
-                            if not tx_data:
-                                raise Exception("No transaction data available from 0x API")
-                    else:
-                        raise Exception(f"Failed to get transaction data: {response.status_code} - {response.text}")
+                raise Exception("No transaction data in quote")
+            
+            # Vérifier que tous les champs requis sont présents
+            required_fields = ['to', 'data', 'value', 'gas', 'gasPrice']
+            for field in required_fields:
+                if field not in tx_data:
+                    raise Exception(f"Missing required field in transaction: {field}")
+            
+            # Valider l'adresse 'to' - s'assurer qu'elle commence par '0x'
+            to_address_raw = tx_data.get('to')
+            if not to_address_raw.startswith('0x'):
+                raise Exception(f"Invalid 'to' address format: {to_address_raw}")
+            
+            # Convertir l'adresse en checksum pour Web3
+            to_address = self.w3.to_checksum_address(to_address_raw)
+            logger.info(f"Adresse 'to' convertie en checksum: {to_address}")
             
             # Construire la transaction Web3 correctement
             nonce = self.w3.eth.get_transaction_count(self.sniping_address)
             
             # Créer la transaction avec les champs requis par Web3
             transaction = {
-                'to': tx_data.get('to'),
+                'to': to_address,
                 'data': tx_data.get('data'),
-                'value': int(tx_data.get('value', 0)) if tx_data.get('value') else 0,
-                'gas': int(tx_data.get('gas', 300000)) if tx_data.get('gas') else 300000,
-                'gasPrice': int(tx_data.get('gasPrice', 1000000000)) if tx_data.get('gasPrice') else 1000000000,
+                'value': int(tx_data.get('value', 0)),
+                'gas': int(tx_data.get('gas', 300000)),
+                'gasPrice': int(tx_data.get('gasPrice', 1000000000)),
                 'nonce': nonce,
                 'chainId': self.chain_id
             }
@@ -768,40 +756,6 @@ class SniperManager:
             logger.error(f"Error executing snipe swap: {e}")
             raise
     
-    async def _build_transaction_manually(self, quote: dict) -> dict:
-        """Construit une transaction manuellement si l'API 0x ne fournit pas les données de transaction"""
-        try:
-            # Récupérer les informations nécessaires du quote
-            sell_token = quote.get('sellToken')
-            buy_token = quote.get('buyToken')
-            sell_amount = quote.get('sellAmount')
-            buy_amount = quote.get('buyAmount')
-            
-            if not all([sell_token, buy_token, sell_amount, buy_amount]):
-                logger.error("Missing required quote data for manual transaction building")
-                return None
-            
-            # Utiliser les données de transaction du quote si disponibles
-            transaction_data = quote.get('transaction', {})
-            
-            # Construire la transaction avec les vraies données du quote
-            transaction = {
-                'from': self.sniping_address,
-                'to': transaction_data.get('to', '0xDef1C0ded9bec7F1a1670819833240f027b25EfF'),
-                'value': int(transaction_data.get('value', 0)),
-                'gas': int(transaction_data.get('gas', 300000)),
-                'gasPrice': int(transaction_data.get('gasPrice', self.w3.eth.gas_price)),
-                'nonce': self.w3.eth.get_transaction_count(self.sniping_address),
-                'chainId': self.chain_id,
-                'data': transaction_data.get('data', '0x')
-            }
-            
-            logger.info(f"Built manual transaction: {transaction}")
-            return transaction
-            
-        except Exception as e:
-            logger.error(f"Error building manual transaction: {e}")
-            return None
     
     async def snipe_token(self, token_address: str, eth_amount: float) -> dict:
         """Effectue un snipe d'un token avec un montant en ETH"""
@@ -829,17 +783,30 @@ class SniperManager:
             if not quote:
                 raise Exception("Failed to get quote from 0x API")
             
-            # Vérifier les issues du quote
+            # Vérifier les issues du quote v2
             issues = quote.get('issues', {})
             if issues:
                 logger.warning(f"Quote has issues: {issues}")
                 # Vérifier spécifiquement la balance
-                balance_issue = issues.get('balance', {})
+                balance_issue = issues.get('balance')
                 if balance_issue:
                     actual_balance = int(balance_issue.get('actual', 0))
                     expected_balance = int(balance_issue.get('expected', 0))
                     if actual_balance < expected_balance:
                         raise Exception(f"Insufficient token balance. Required: {expected_balance} wei, Available: {actual_balance} wei")
+                
+                # Vérifier si la simulation est incomplète
+                if issues.get('simulationIncomplete', False):
+                    logger.warning("Quote simulation is incomplete - trade may fail")
+                
+                # Vérifier les sources invalides
+                invalid_sources = issues.get('invalidSourcesPassed', [])
+                if invalid_sources:
+                    logger.warning(f"Invalid sources passed: {invalid_sources}")
+            
+            # Vérifier la disponibilité de la liquidité
+            if not quote.get('liquidityAvailable', False):
+                raise Exception("Insufficient liquidity for this trade")
             
             # Exécuter le swap
             tx_hash = await self.execute_swap(quote)
