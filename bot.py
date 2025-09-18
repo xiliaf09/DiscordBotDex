@@ -741,7 +741,7 @@ class SniperManager:
                     else:
                         raise Exception(f"Failed to get transaction data: {response.status_code} - {response.text}")
             
-            # S'assurer que tous les champs requis sont présents
+            # S'assurer que tous les champs requis sont présents et correctement typés
             if 'nonce' not in tx_data:
                 nonce = self.w3.eth.get_transaction_count(self.sniping_address)
                 tx_data['nonce'] = nonce
@@ -752,6 +752,18 @@ class SniperManager:
                 
             if 'chainId' not in tx_data:
                 tx_data['chainId'] = self.chain_id
+            
+            # Convertir les champs string en entiers pour Web3
+            if 'gas' in tx_data and isinstance(tx_data['gas'], str):
+                tx_data['gas'] = int(tx_data['gas'])
+            if 'gasPrice' in tx_data and isinstance(tx_data['gasPrice'], str):
+                tx_data['gasPrice'] = int(tx_data['gasPrice'])
+            if 'value' in tx_data and isinstance(tx_data['value'], str):
+                tx_data['value'] = int(tx_data['value'])
+            if 'nonce' in tx_data and isinstance(tx_data['nonce'], str):
+                tx_data['nonce'] = int(tx_data['nonce'])
+            if 'chainId' in tx_data and isinstance(tx_data['chainId'], str):
+                tx_data['chainId'] = int(tx_data['chainId'])
             
             logger.info(f"Final transaction data: {tx_data}")
             
