@@ -303,6 +303,12 @@ class DatabaseManager:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS tracked_addresses (
+                        address VARCHAR(42) PRIMARY KEY,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
             else:
                 # Tables SQLite
                 c.execute("""
@@ -334,6 +340,12 @@ class DatabaseManager:
                         token_symbol TEXT,
                         fid TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS tracked_addresses (
+                        address TEXT PRIMARY KEY,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
             
@@ -497,6 +509,37 @@ class DatabaseManager:
     def set_emergency_call_threshold(self, threshold: float):
         """Définit le seuil d'appel d'urgence"""
         self.set_preference('emergency_call_threshold', str(threshold))
+    
+    def get_tracked_addresses(self) -> Set[str]:
+        """Récupère toutes les adresses trackées"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT address FROM tracked_addresses")
+        addresses = {row[0] for row in c.fetchall()}
+        conn.close()
+        return addresses
+    
+    def add_tracked_address(self, address: str):
+        """Ajoute une adresse à la liste des trackées"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO tracked_addresses (address) VALUES (%s) ON CONFLICT (address) DO NOTHING", (address,))
+        else:
+            c.execute("INSERT OR IGNORE INTO tracked_addresses (address) VALUES (?)", (address,))
+        conn.commit()
+        conn.close()
+    
+    def remove_tracked_address(self, address: str):
+        """Retire une adresse de la liste des trackées"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        if self.db_type == 'postgresql':
+            c.execute("DELETE FROM tracked_addresses WHERE address = %s", (address,))
+        else:
+            c.execute("DELETE FROM tracked_addresses WHERE address = ?", (address,))
+        conn.commit()
+        conn.close()
 
 # Remplace l'ABI du router Uniswap V3
 UNISWAP_V3_ROUTER_ABI = [
@@ -1114,6 +1157,9 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!removekeyword <mot>", value="Retire un mot-clé de la whitelist.", inline=False)
         embed.add_field(name="!listkeywords", value="Affiche la liste des mots-clés whitelistés.", inline=False)
         embed.add_field(name="!clearkeywords", value="Vide complètement la whitelist de mots-clés.", inline=False)
+        embed.add_field(name="!trackdeploy <adresse>", value="Ajoute une adresse à la liste des adresses trackées pour les déploiements Clanker.", inline=False)
+        embed.add_field(name="!untrackdeploy <adresse>", value="Retire une adresse de la liste des adresses trackées.", inline=False)
+        embed.add_field(name="!listtracked", value="Affiche la liste des adresses trackées.", inline=False)
         embed.add_field(name="!migratetodb", value="Migre les données des fichiers JSON vers la base de données.", inline=False)
         embed.add_field(name="!checkdb", value="Vérifie la connexion et l'état de la base de données.", inline=False)
         await ctx.send(embed=embed)
@@ -1137,6 +1183,7 @@ class ClankerMonitor(commands.Cog):
         self.banned_fids: Set[str] = self.db.get_banned_fids()
         self.whitelisted_fids: Set[str] = self.db.get_whitelisted_fids()
         self.keyword_whitelist: Set[str] = self.db.get_keyword_whitelist()
+        self.tracked_addresses: Set[str] = self.db.get_tracked_addresses()
         self.default_volume_threshold = self.db.get_volume_threshold()
         self.emergency_call_threshold = self.db.get_emergency_call_threshold()
         
@@ -1147,7 +1194,7 @@ class ClankerMonitor(commands.Cog):
             # Recharger après migration
             self._refresh_data_from_db()
         
-        logger.info(f"Loaded from database: {len(self.banned_fids)} banned FIDs, {len(self.whitelisted_fids)} whitelisted FIDs, {len(self.keyword_whitelist)} keywords")
+        logger.info(f"Loaded from database: {len(self.banned_fids)} banned FIDs, {len(self.whitelisted_fids)} whitelisted FIDs, {len(self.keyword_whitelist)} keywords, {len(self.tracked_addresses)} tracked addresses")
         logger.info(f"Volume threshold: {self.default_volume_threshold}, Emergency call threshold: {self.emergency_call_threshold}")
         # --- Ajout Web3 WebSocket et contrat factory ---
         self.w3_ws = Web3(Web3.WebsocketProvider(QUICKNODE_WSS))
@@ -1274,6 +1321,7 @@ class ClankerMonitor(commands.Cog):
         self.banned_fids = self.db.get_banned_fids()
         self.whitelisted_fids = self.db.get_whitelisted_fids()
         self.keyword_whitelist = self.db.get_keyword_whitelist()
+        self.tracked_addresses = self.db.get_tracked_addresses()
         self.default_volume_threshold = self.db.get_volume_threshold()
         self.emergency_call_threshold = self.db.get_emergency_call_threshold()
 
@@ -2243,6 +2291,70 @@ class ClankerMonitor(commands.Cog):
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token sans FID {token_address.lower()} à la surveillance volume (on-chain)")
                                     continue  # Skip le reste du traitement normal
+                                
+                                # Vérifier si l'adresse du créateur est trackée
+                                creator_address = None
+                                is_tracked_address = False
+                                try:
+                                    # Extraire l'adresse du créateur depuis l'événement
+                                    if 'creatorAdmin' in event['args']:
+                                        creator_address = event['args']['creatorAdmin']
+                                    elif 'msgSender' in event['args']:
+                                        creator_address = event['args']['msgSender']
+                                    
+                                    if creator_address and creator_address in self.tracked_addresses:
+                                        is_tracked_address = True
+                                        logger.info(f"Adresse trackée détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
+                                        
+                                        # Envoyer l'alerte spéciale verte pour les adresses trackées
+                                        embed = discord.Embed(
+                                            title="🎯 Clanker Adresse Trackée",
+                                            description=f"Une adresse que vous surveillez a déployé un nouveau clanker !",
+                                            color=discord.Color.green(),
+                                            timestamp=datetime.now(timezone.utc)
+                                        )
+                                        embed.add_field(name="Nom", value=name, inline=True)
+                                        embed.add_field(name="Symbole", value=symbol, inline=True)
+                                        embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
+                                        embed.add_field(name="Adresse Trackée", value=f"`{creator_address}`", inline=False)
+                                        embed.add_field(name="FID", value=fid if fid else "Non spécifié", inline=True)
+                                        
+                                        if image:
+                                            embed.set_thumbnail(url=image)
+                                        
+                                        # Créer la vue avec les boutons
+                                        view = discord.ui.View()
+                                        
+                                        # Bouton Basescan
+                                        basescan_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.secondary,
+                                            label="Basescan",
+                                            url=f"https://basescan.org/token/{token_address}"
+                                        )
+                                        view.add_item(basescan_button)
+                                        
+                                        # Bouton Clanker World
+                                        clanker_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.primary,
+                                            label="Lien Clanker World",
+                                            url=f"https://www.clanker.world/clanker/{token_address}"
+                                        )
+                                        view.add_item(clanker_button)
+                                        
+                                        await channel.send(embed=embed, view=view)
+                                        logger.info(f"On-chain Clanker tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
+                                        
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token tracké {token_address.lower()} à la surveillance volume (on-chain)")
+                                        continue  # Skip le reste du traitement normal
+                                        
+                                except Exception as e:
+                                    logger.error(f"Erreur lors de l'extraction de l'adresse créateur: {e}")
+                                
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker (on-chain)",
@@ -2433,6 +2545,70 @@ class ClankerMonitor(commands.Cog):
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 sans FID {token_address.lower()} à la surveillance volume (on-chain)")
                                     continue  # Skip le reste du traitement normal
+                                
+                                # Vérifier si l'adresse du créateur est trackée
+                                creator_address = None
+                                is_tracked_address = False
+                                try:
+                                    # Extraire l'adresse du créateur depuis l'événement V4
+                                    if 'tokenAdmin' in event['args']:
+                                        creator_address = event['args']['tokenAdmin']
+                                    elif 'msgSender' in event['args']:
+                                        creator_address = event['args']['msgSender']
+                                    
+                                    if creator_address and creator_address in self.tracked_addresses:
+                                        is_tracked_address = True
+                                        logger.info(f"Adresse trackée V4 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
+                                        
+                                        # Envoyer l'alerte spéciale verte pour les adresses trackées V4
+                                        embed = discord.Embed(
+                                            title="🎯 Clanker Adresse Trackée (V4)",
+                                            description=f"Une adresse que vous surveillez a déployé un nouveau clanker V4 !",
+                                            color=discord.Color.green(),
+                                            timestamp=datetime.now(timezone.utc)
+                                        )
+                                        embed.add_field(name="Nom", value=name, inline=True)
+                                        embed.add_field(name="Symbole", value=symbol, inline=True)
+                                        embed.add_field(name="Contract", value=f"`{token_address}`", inline=False)
+                                        embed.add_field(name="Adresse Trackée", value=f"`{creator_address}`", inline=False)
+                                        embed.add_field(name="FID", value=fid if fid else "Non spécifié", inline=True)
+                                        
+                                        if image:
+                                            embed.set_thumbnail(url=image)
+                                        
+                                        # Créer la vue avec les boutons
+                                        view = discord.ui.View()
+                                        
+                                        # Bouton Basescan
+                                        basescan_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.secondary,
+                                            label="Basescan",
+                                            url=f"https://basescan.org/token/{token_address}"
+                                        )
+                                        view.add_item(basescan_button)
+                                        
+                                        # Bouton Clanker World
+                                        clanker_button = discord.ui.Button(
+                                            style=discord.ButtonStyle.primary,
+                                            label="Lien Clanker World",
+                                            url=f"https://www.clanker.world/clanker/{token_address}"
+                                        )
+                                        view.add_item(clanker_button)
+                                        
+                                        await channel.send(embed=embed, view=view)
+                                        logger.info(f"On-chain Clanker V4 tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
+                                        
+                                        # Ajout à la surveillance volume
+                                        self.tracked_clanker_tokens[token_address.lower()] = {
+                                            'first_seen': time.time(),
+                                            'alerted': False
+                                        }
+                                        logger.info(f"[VOLUME TRACK] Ajout du token V4 tracké {token_address.lower()} à la surveillance volume (on-chain)")
+                                        continue  # Skip le reste du traitement normal
+                                        
+                                except Exception as e:
+                                    logger.error(f"Erreur lors de l'extraction de l'adresse créateur V4: {e}")
+                                
                                 # Envoie l'alerte Discord
                                 embed = discord.Embed(
                                     title="🥇 Nouveau Token Clanker V4 Premium (on-chain)" if is_premium else "🆕 Nouveau Token Clanker V4 (on-chain)",
@@ -3158,6 +3334,89 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Erreur lors de la vérification: {str(e)}")
             logger.error(f"Error during database check: {e}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def trackdeploy(self, ctx, address: str):
+        """Ajoute une adresse à la liste des adresses trackées pour les déploiements Clanker."""
+        # Vérifier que l'adresse est valide
+        if not address.startswith('0x') or len(address) != 42:
+            await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x...")
+            return
+        
+        # Normaliser l'adresse (checksum)
+        try:
+            address = Web3.to_checksum_address(address)
+        except Exception:
+            await ctx.send("❌ Adresse Ethereum invalide.")
+            return
+        
+        if address in self.tracked_addresses:
+            await ctx.send(f"ℹ️ L'adresse `{address}` est déjà trackée.")
+            return
+        
+        # Ajouter à la base de données
+        self.db.add_tracked_address(address)
+        
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
+        
+        await ctx.send(f"✅ Adresse `{address}` ajoutée à la liste des adresses trackées. Vous recevrez une alerte spéciale verte quand cette adresse déploiera un clanker.")
+        logger.info(f"Address {address} added to tracked addresses by {ctx.author}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def untrackdeploy(self, ctx, address: str):
+        """Retire une adresse de la liste des adresses trackées."""
+        # Vérifier que l'adresse est valide
+        if not address.startswith('0x') or len(address) != 42:
+            await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x...")
+            return
+        
+        # Normaliser l'adresse (checksum)
+        try:
+            address = Web3.to_checksum_address(address)
+        except Exception:
+            await ctx.send("❌ Adresse Ethereum invalide.")
+            return
+        
+        if address not in self.tracked_addresses:
+            await ctx.send(f"ℹ️ L'adresse `{address}` n'est pas trackée.")
+            return
+        
+        # Retirer de la base de données
+        self.db.remove_tracked_address(address)
+        
+        # Rafraîchir les données en mémoire
+        self._refresh_data_from_db()
+        
+        await ctx.send(f"✅ Adresse `{address}` retirée de la liste des adresses trackées.")
+        logger.info(f"Address {address} removed from tracked addresses by {ctx.author}")
+
+    @commands.command()
+    async def listtracked(self, ctx):
+        """Affiche la liste des adresses trackées."""
+        if not self.tracked_addresses:
+            await ctx.send("📝 Aucune adresse trackée.")
+            return
+        
+        embed = discord.Embed(
+            title="📋 Adresses Trackées",
+            description=f"{len(self.tracked_addresses)} adresse(s) trackée(s) pour les déploiements Clanker",
+            color=discord.Color.blue()
+        )
+        
+        # Afficher les adresses par groupes de 10
+        addresses_list = list(self.tracked_addresses)
+        for i in range(0, len(addresses_list), 10):
+            chunk = addresses_list[i:i+10]
+            embed.add_field(
+                name=f"Adresses {i+1}-{min(i+10, len(addresses_list))}",
+                value="\n".join([f"`{addr}`" for addr in chunk]),
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
 
     @commands.command(name='exportbanlist')
     @commands.has_permissions(administrator=True)
