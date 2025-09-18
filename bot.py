@@ -650,6 +650,13 @@ class SniperManager:
     async def get_quote(self, sell_token: str, buy_token: str, sell_amount: str) -> dict:
         """Récupère un quote depuis l'API 0x"""
         try:
+            # Utiliser l'endpoint permit2 pour l'ETH natif (plus flexible)
+            endpoint = "/swap/permit2/quote"
+            
+            # Si on vend de l'ETH natif, utiliser l'adresse spéciale
+            if sell_token.lower() == self.weth_address.lower():
+                sell_token = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"  # ETH natif
+            
             params = {
                 "chainId": self.chain_id,
                 "sellToken": sell_token,
@@ -658,11 +665,11 @@ class SniperManager:
                 "taker": self.sniping_address
             }
             
-            logger.info(f"Getting 0x quote: {sell_token} -> {buy_token}, amount: {sell_amount}")
+            logger.info(f"Getting 0x permit2 quote: {sell_token} -> {buy_token}, amount: {sell_amount}")
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{self.zerox_base_url}/swap/allowance-holder/quote",
+                    f"{self.zerox_base_url}{endpoint}",
                     headers=self.zerox_headers,
                     params=params,
                     timeout=10.0
@@ -670,21 +677,21 @@ class SniperManager:
                 
                 if response.status_code == 200:
                     quote_data = response.json()
-                    logger.info(f"0x quote received: {quote_data}")
+                    logger.info(f"0x permit2 quote received: {quote_data}")
                     
                     # Vérifier si le quote contient des données de transaction
-                    if 'tx' in quote_data:
+                    if 'tx' in quote_data or 'transaction' in quote_data:
                         logger.info("Quote contains transaction data")
                     else:
                         logger.warning("Quote does not contain transaction data")
                     
                     return quote_data
                 else:
-                    logger.error(f"0x API quote error: {response.status_code} - {response.text}")
+                    logger.error(f"0x API permit2 quote error: {response.status_code} - {response.text}")
                     return None
                     
         except Exception as e:
-            logger.error(f"Error getting 0x quote: {e}")
+            logger.error(f"Error getting 0x permit2 quote: {e}")
             return None
     
     async def execute_swap(self, quote: dict) -> str:
@@ -700,9 +707,13 @@ class SniperManager:
                 logger.info("No tx data in quote, attempting to get transaction data...")
                 
                 # Construire les paramètres pour la requête de transaction
+                sell_token = quote.get('sellToken')
+                if sell_token and sell_token.lower() == self.weth_address.lower():
+                    sell_token = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"  # ETH natif
+                
                 params = {
                     "chainId": self.chain_id,
-                    "sellToken": quote.get('sellToken'),
+                    "sellToken": sell_token,
                     "buyToken": quote.get('buyToken'),
                     "sellAmount": quote.get('sellAmount'),
                     "taker": self.sniping_address,
@@ -711,7 +722,7 @@ class SniperManager:
                 
                 async with httpx.AsyncClient() as client:
                     response = await client.get(
-                        f"{self.zerox_base_url}/swap/allowance-holder/quote",
+                        f"{self.zerox_base_url}/swap/permit2/quote",
                         headers=self.zerox_headers,
                         params=params,
                         timeout=10.0
