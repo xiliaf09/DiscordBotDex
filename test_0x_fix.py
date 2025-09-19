@@ -37,7 +37,7 @@ async def test_0x_api_connection():
         "buyToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC on Base
         "sellAmount": "1000000000000000",  # 0.001 ETH in wei
         "taker": "0x6e9df0B4c9E54Bc141c040Fd2f5004d5A0481F52",  # Votre adresse wallet
-        "slippageBps": "100"  # 1% slippage
+        "slippageBps": "10000"  # 100% slippage
     }
     
     print("🔄 Testing 0x API v2 connection...")

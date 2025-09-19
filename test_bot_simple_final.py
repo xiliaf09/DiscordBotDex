@@ -38,7 +38,7 @@ async def test_bot_corrections():
         "buyToken": "0x9Cb41FD9dC6891BAe8187029461bfAADF6CC0C69",  # Token test
         "sellAmount": "100000000000000",  # 0.0001 ETH
         "taker": wallet_address,  # Paramètre requis
-        "slippageBps": "100"  # 1% slippage
+        "slippageBps": "10000"  # 100% slippage
     }
     
     for key, value in test_params.items():

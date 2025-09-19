@@ -59,7 +59,7 @@ def test_api_endpoint_logic():
         "sellToken": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",  # ETH natif
         "buyToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC
         "sellAmount": "1000000000000000",  # 0.001 ETH en wei
-        "slippageBps": "100"  # 1% slippage
+        "slippageBps": "10000"  # 100% slippage
     }
     
     print("✅ Paramètres de test:")

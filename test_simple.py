@@ -37,7 +37,7 @@ async def test_0x_integration():
         "buyToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC
         "sellAmount": "1000000000000000",  # 0.001 ETH
         "taker": wallet_address,
-        "slippageBps": "100"
+        "slippageBps": "10000"  # 100% slippage
     }
     
     print(f"\n🔄 Test de quote: 0.001 ETH -> USDC")

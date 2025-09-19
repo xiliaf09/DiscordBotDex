@@ -66,7 +66,7 @@ async def execute_real_swap():
         "buyToken": token_address,
         "sellAmount": eth_amount_wei,
         "taker": wallet_address,
-        "slippageBps": "100"  # 1% slippage
+        "slippageBps": "10000"  # 100% slippage
     }
     
     try:

@@ -44,7 +44,7 @@ async def test_token_snipe():
         "buyToken": token_address,  # Token à acheter
         "sellAmount": eth_amount_wei,  # Montant en wei
         "taker": wallet_address,
-        "slippageBps": "100"  # 1% slippage
+        "slippageBps": "10000"  # 100% slippage
     }
     
     print(f"\n🔄 Test de quote: {eth_amount} ETH -> {token_address}")
