@@ -3231,11 +3231,12 @@ class ClankerMonitor(commands.Cog):
                                 await channel.send(embed=embed, view=view)
                                 logger.info(f"On-chain Clanker V4 alert sent for {name} ({symbol}) {token_address}")
                                 
-                                # Vérifier s'il y a un snipe actif pour ce FID
+                                # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                 if fid:
-                                    snipe_config_fid = self.db.get_snipe_for_fid(fid)
-                                    if snipe_config_fid:
-                                        logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                    snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                    logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs_fid)} snipes pour le FID {fid}")
+                                    for snipe_config_fid in snipe_configs_fid:
+                                        logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                         
                                         # Exécuter le snipe en arrière-plan
                                         asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
