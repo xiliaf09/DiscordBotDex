@@ -790,6 +790,22 @@ class DatabaseManager:
                 'created_at': row[8]
             })
         return snipes
+    
+    def clear_all_snipes(self) -> int:
+        """Supprime TOUS les snipes actifs et retourne le nombre de snipes supprimés"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        
+        if self.db_type == 'postgresql':
+            c.execute("UPDATE active_snipes SET is_active = FALSE WHERE is_active = TRUE")
+        else:
+            c.execute("UPDATE active_snipes SET is_active = 0 WHERE is_active = 1")
+        
+        deleted_count = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        return deleted_count
 
 class SniperManager:
     """Gestionnaire des snipes utilisant l'API 0x"""
@@ -1630,6 +1646,7 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!setupsnipe <adresse> <montant>", value="Configure un snipe automatique pour une adresse trackée.", inline=False)
         embed.add_field(name="!cancelsnipe <adresse>", value="Annule un snipe actif pour une adresse trackée.", inline=False)
         embed.add_field(name="!listsnipes", value="Affiche la liste des snipes actifs.", inline=False)
+        embed.add_field(name="!clearsnipes", value="Supprime TOUS les snipes actifs.", inline=False)
         embed.add_field(name="!testsnipe <token> <montant>", value="Teste un snipe sur un token spécifique.", inline=False)
         embed.add_field(name="!migratetodb", value="Migre les données des fichiers JSON vers la base de données.", inline=False)
         embed.add_field(name="!checkdb", value="Vérifie la connexion et l'état de la base de données.", inline=False)
@@ -4287,19 +4304,47 @@ class ClankerMonitor(commands.Cog):
         
         for snipe in snipes:
             if snipe['snipe_type'] == 'address':
-                name = f"Adresse: `{snipe['tracked_address']}`"
-                target = f"**Adresse:** `{snipe['tracked_address']}`"
+                name = f"📍 Adresse: `{snipe['tracked_address']}`"
             else:
-                name = f"FID: `{snipe['tracked_fid']}`"
-                target = f"**FID:** `{snipe['tracked_fid']}`"
+                name = f"🆔 FID: `{snipe['tracked_fid']}`"
             
             keyword_info = f"\n**Keyword:** {snipe['keyword']}" if snipe['keyword'] else ""
             
             embed.add_field(
                 name=name,
-                value=f"{target}\n**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Wallet:** {snipe['wallet_id']}\n**Type:** {snipe['snipe_type']}{keyword_info}\n**Créé:** {snipe['created_at']}",
+                value=f"**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Wallet:** {snipe['wallet_id']}\n**Type:** {snipe['snipe_type']}{keyword_info}",
                 inline=False
             )
+        
+        await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def clearsnipes(self, ctx):
+        """Supprime TOUS les snipes actifs."""
+        # Vérifier s'il y a des snipes actifs
+        snipes = self.db.get_active_snipes()
+        
+        if not snipes:
+            await ctx.send("📝 Aucun snipe actif à supprimer.")
+            return
+        
+        # Supprimer tous les snipes actifs
+        deleted_count = self.db.clear_all_snipes()
+        
+        embed = discord.Embed(
+            title="🗑️ Snipes Supprimés",
+            description=f"**{deleted_count}** snipe(s) supprimé(s) avec succès !",
+            color=discord.Color.red()
+        )
+        
+        embed.add_field(
+            name="📊 Détails",
+            value=f"• **Snipes supprimés:** {deleted_count}\n• **Action:** Tous les snipes actifs ont été désactivés\n• **Statut:** Aucun snipe actif restant",
+            inline=False
+        )
+        
+        embed.set_footer(text="Utilisez !listsnipes pour vérifier qu'aucun snipe n'est actif")
         
         await ctx.send(embed=embed)
 
