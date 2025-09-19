@@ -2754,6 +2754,7 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
                                         snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs)} snipes pour l'adresse {creator_address}")
                                         for snipe_config in snipe_configs:
                                             logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
@@ -2763,6 +2764,7 @@ class ClankerMonitor(commands.Cog):
                                         # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
                                             snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs_fid)} snipes pour le FID {fid}")
                                             for snipe_config_fid in snipe_configs_fid:
                                                 logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
@@ -3007,6 +3009,7 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
                                         snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs)} snipes pour l'adresse {creator_address}")
                                         for snipe_config in snipe_configs:
                                             logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
@@ -3016,6 +3019,7 @@ class ClankerMonitor(commands.Cog):
                                         # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
                                             snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs_fid)} snipes pour le FID {fid}")
                                             for snipe_config_fid in snipe_configs_fid:
                                                 logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
@@ -3155,6 +3159,7 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
                                         snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs)} snipes pour l'adresse {creator_address}")
                                         for snipe_config in snipe_configs:
                                             logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
@@ -3164,6 +3169,7 @@ class ClankerMonitor(commands.Cog):
                                         # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
                                             snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            logger.info(f"🔍 DEBUG: Trouvé {len(snipe_configs_fid)} snipes pour le FID {fid}")
                                             for snipe_config_fid in snipe_configs_fid:
                                                 logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
