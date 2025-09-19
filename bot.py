@@ -710,14 +710,14 @@ class DatabaseManager:
 
         
             if self.db_type == 'postgresql':
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = %s AND wallet_id = %s AND is_active = TRUE", (tracked_fid, wallet_id))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = %s AND wallet_id = %s AND is_active = TRUE", (tracked_fid, wallet_id))
             else:
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = ? AND wallet_id = ? AND is_active = 1", (tracked_fid, wallet_id))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = ? AND wallet_id = ? AND is_active = 1", (tracked_fid, wallet_id))
         else:
             if self.db_type == 'postgresql':
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = %s AND is_active = TRUE", (tracked_fid,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = %s AND is_active = TRUE", (tracked_fid,))
             else:
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_fid = ? AND is_active = 1", (tracked_fid,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = ? AND is_active = 1", (tracked_fid,))
         
         row = c.fetchone()
         conn.close()
