@@ -228,6 +228,7 @@ class DatabaseManager:
             has_wallet_id = 'wallet_id' in column_names
             has_tracked_fid = 'tracked_fid' in column_names
             has_snipe_type = 'snipe_type' in column_names
+            has_keyword = 'keyword' in column_names
             
             if has_old_structure:
                 logger.info("🔄 Migration automatique de l'ancienne structure vers la nouvelle...")
@@ -250,6 +251,8 @@ class DatabaseManager:
                     migrations_needed.append("tracked_fid")
                 if not has_snipe_type:
                     migrations_needed.append("snipe_type")
+                if not has_keyword:
+                    migrations_needed.append("keyword")
                 
                 if migrations_needed:
                     logger.info(f"🔄 Migration des champs manquants: {', '.join(migrations_needed)}")
@@ -269,6 +272,10 @@ class DatabaseManager:
                     if not has_snipe_type:
                         cursor.execute("ALTER TABLE active_snipes ADD COLUMN snipe_type VARCHAR(10) DEFAULT 'address'")
                         logger.info("✅ Champ snipe_type ajouté")
+                    
+                    if not has_keyword:
+                        cursor.execute("ALTER TABLE active_snipes ADD COLUMN keyword VARCHAR(100)")
+                        logger.info("✅ Champ keyword ajouté")
                     
                     # Mettre à jour les enregistrements existants
                     cursor.execute("UPDATE active_snipes SET snipe_type = 'address' WHERE snipe_type IS NULL")
@@ -354,6 +361,7 @@ class DatabaseManager:
                         max_attempts INTEGER DEFAULT 1,
                         wallet_id VARCHAR(2) DEFAULT 'W1',
                         snipe_type VARCHAR(10) DEFAULT 'address',
+                        keyword VARCHAR(100),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT TRUE
                     )
@@ -396,6 +404,7 @@ class DatabaseManager:
                         max_attempts INTEGER DEFAULT 1,
                         wallet_id TEXT DEFAULT 'W1',
                         snipe_type TEXT DEFAULT 'address',
+                        keyword TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT 1,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
@@ -599,9 +608,9 @@ class DatabaseManager:
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE is_active = TRUE")
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE is_active = TRUE")
         else:
-            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE is_active = 1")
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE is_active = 1")
         snipes = []
         for row in c.fetchall():
             snipes.append({
@@ -612,21 +621,22 @@ class DatabaseManager:
                 'max_attempts': int(row[4]),
                 'wallet_id': row[5],
                 'snipe_type': row[6],
-                'created_at': row[7]
+                'keyword': row[7],
+                'created_at': row[8]
             })
         conn.close()
         return snipes
     
-    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float, max_attempts: int = 1, wallet_id: str = 'W1', snipe_type: str = 'address', tracked_fid: str = None):
+    def add_active_snipe(self, tracked_address: str, snipe_amount_eth: float, max_attempts: int = 1, wallet_id: str = 'W1', snipe_type: str = 'address', tracked_fid: str = None, keyword: str = None):
         """Ajoute un snipe actif"""
         conn = self._get_connection()
         c = conn.cursor()
         if self.db_type == 'postgresql':
-            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type) VALUES (%s, %s, %s, %s, %s, %s)", 
-                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type))
+            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
+                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword))
         else:
-            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type) VALUES (?, ?, ?, ?, ?, ?)", 
-                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type))
+            c.execute("INSERT INTO active_snipes (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                     (tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword))
         conn.commit()
         conn.close()
     
@@ -666,14 +676,14 @@ class DatabaseManager:
         
         if wallet_id:
             if self.db_type == 'postgresql':
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND wallet_id = %s AND is_active = TRUE", (tracked_address, wallet_id))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = %s AND wallet_id = %s AND is_active = TRUE", (tracked_address, wallet_id))
             else:
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND wallet_id = ? AND is_active = 1", (tracked_address, wallet_id))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = ? AND wallet_id = ? AND is_active = 1", (tracked_address, wallet_id))
         else:
             if self.db_type == 'postgresql':
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
             else:
-                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
+                c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
         
         row = c.fetchone()
         conn.close()
@@ -686,7 +696,8 @@ class DatabaseManager:
                 'max_attempts': int(row[4]),
                 'wallet_id': row[5],
                 'snipe_type': row[6],
-                'created_at': row[7]
+                'keyword': row[7],
+                'created_at': row[8]
             }
         return None
     
@@ -719,7 +730,8 @@ class DatabaseManager:
                 'max_attempts': int(row[4]),
                 'wallet_id': row[5],
                 'snipe_type': row[6],
-                'created_at': row[7]
+                'keyword': row[7],
+                'created_at': row[8]
             }
         return None
 
@@ -3914,7 +3926,7 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float, max_attempts: int, wallet_id: str):
+    async def setupsnipe(self, ctx, tracked_address: str, eth_amount: float, max_attempts: int, wallet_id: str, keyword: str = None):
         """Configure un snipe pour une adresse trackée avec un montant en ETH, un nombre de tentatives et un wallet."""
         # Vérifier que l'adresse est valide
         if not tracked_address.startswith('0x') or len(tracked_address) != 42:
@@ -3961,14 +3973,17 @@ class ClankerMonitor(commands.Cog):
             return
         
         # Ajouter le snipe à la base de données
-        self.db.add_active_snipe(tracked_address, eth_amount, max_attempts, wallet_id, 'address')
+        self.db.add_active_snipe(tracked_address, eth_amount, max_attempts, wallet_id, 'address', None, keyword)
+        
+        keyword_info = f"\n**Keyword:** {keyword}" if keyword else ""
+        keyword_condition = f" contenant le mot-clé '{keyword}'" if keyword else ""
         
         await ctx.send(f"✅ Snipe configuré avec succès !\n"
                       f"**Adresse trackée:** `{tracked_address}`\n"
                       f"**Montant:** {eth_amount} ETH\n"
                       f"**Tentatives:** {max_attempts}\n"
-                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`)\n\n"
-                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker.\n"
+                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`){keyword_info}\n\n"
+                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que cette adresse déploiera un nouveau clanker{keyword_condition}.\n"
                       f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai de 0.5 seconde entre chaque tentative.")
         logger.info(f"Snipe configured by {ctx.author}: {tracked_address} -> {eth_amount} ETH (max_attempts: {max_attempts}, wallet: {wallet_id})")
 
@@ -4010,7 +4025,7 @@ class ClankerMonitor(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(administrator=True)
-    async def setupsnipefid(self, ctx, fid: str, eth_amount: float, max_attempts: int, wallet_id: str):
+    async def setupsnipefid(self, ctx, fid: str, eth_amount: float, max_attempts: int, wallet_id: str, keyword: str = None):
         """Configure un snipe pour un FID avec un montant en ETH, un nombre de tentatives et un wallet."""
         # Vérifier que le FID est valide
         if not fid.isdigit():
@@ -4045,14 +4060,17 @@ class ClankerMonitor(commands.Cog):
             return
         
         # Ajouter le snipe à la base de données
-        self.db.add_active_snipe(None, eth_amount, max_attempts, wallet_id, 'fid', fid)
+        self.db.add_active_snipe(None, eth_amount, max_attempts, wallet_id, 'fid', fid, keyword)
+        
+        keyword_info = f"\n**Keyword:** {keyword}" if keyword else ""
+        keyword_condition = f" contenant le mot-clé '{keyword}'" if keyword else ""
         
         await ctx.send(f"✅ Snipe FID configuré avec succès !\n"
                       f"**FID tracké:** `{fid}`\n"
                       f"**Montant:** {eth_amount} ETH\n"
                       f"**Tentatives:** {max_attempts}\n"
-                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`)\n\n"
-                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que ce FID déploiera un nouveau clanker.\n"
+                      f"**Wallet:** {wallet_id} (`{sniper_manager.sniping_address}`){keyword_info}\n\n"
+                      f"Le bot achètera automatiquement {eth_amount} ETH du token dès que ce FID déploiera un nouveau clanker{keyword_condition}.\n"
                       f"En cas d'échec, le bot réessaiera jusqu'à {max_attempts} fois avec un délai de 0.5 seconde entre chaque tentative.")
         logger.info(f"Snipe FID configured by {ctx.author}: {fid} -> {eth_amount} ETH (max_attempts: {max_attempts}, wallet: {wallet_id})")
 
@@ -4086,6 +4104,110 @@ class ClankerMonitor(commands.Cog):
         logger.info(f"Snipe FID cancelled by {ctx.author}: {fid} (wallet: {wallet_id})")
 
     @commands.command()
+    async def snipehelp(self, ctx):
+        """Affiche toutes les commandes liées au sniping"""
+        embed = discord.Embed(
+            title="🎯 Commandes de Sniping - Aide",
+            description="Voici toutes les commandes disponibles pour le système de sniping automatique :",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Commandes de setup
+        embed.add_field(
+            name="📝 **Configuration des Snipes**",
+            value=(
+                "`!setupsnipe <adresse> <montant> <tentatives> <W1/W2> [keyword]`\n"
+                "Configure un snipe pour une adresse Ethereum\n"
+                "• **adresse** : Adresse Ethereum à tracker\n"
+                "• **montant** : Montant en ETH (ex: 0.001)\n"
+                "• **tentatives** : Nombre de tentatives (1-10)\n"
+                "• **W1/W2** : Wallet à utiliser\n"
+                "• **keyword** : Mot-clé optionnel dans le nom/ticker\n\n"
+                
+                "`!setupsnipefid <FID> <montant> <tentatives> <W1/W2> [keyword]`\n"
+                "Configure un snipe pour un FID Farcaster\n"
+                "• **FID** : ID Farcaster à tracker\n"
+                "• **montant** : Montant en ETH (ex: 0.001)\n"
+                "• **tentatives** : Nombre de tentatives (1-10)\n"
+                "• **W1/W2** : Wallet à utiliser\n"
+                "• **keyword** : Mot-clé optionnel dans le nom/ticker"
+            ),
+            inline=False
+        )
+        
+        # Commandes de gestion
+        embed.add_field(
+            name="⚙️ **Gestion des Snipes**",
+            value=(
+                "`!listsnipes`\n"
+                "Affiche tous les snipes actifs\n\n"
+                
+                "`!cancelsnipe <adresse> <W1/W2>`\n"
+                "Annule un snipe par adresse\n\n"
+                
+                "`!cancelsnipefid <FID> <W1/W2>`\n"
+                "Annule un snipe par FID"
+            ),
+            inline=False
+        )
+        
+        # Exemples
+        embed.add_field(
+            name="💡 **Exemples d'Utilisation**",
+            value=(
+                "```\n"
+                "!setupsnipe 0x123... 0.001 5 W1 PEPE\n"
+                "!setupsnipefid 973228 0.002 3 W2\n"
+                "!cancelsnipe 0x123... W1\n"
+                "!cancelsnipefid 973228 W2\n"
+                "!listsnipes\n"
+                "```"
+            ),
+            inline=False
+        )
+        
+        # Informations sur les wallets
+        embed.add_field(
+            name="💰 **Système Multi-Wallet**",
+            value=(
+                "• **W1** : Premier wallet (SNIPINGWALLETKEY + ZEROX_API_KEY)\n"
+                "• **W2** : Deuxième wallet (SNIPINGWALLETKEY2 + ZEROX_API_KEY2)\n"
+                "• Chaque wallet peut avoir ses propres snipes actifs"
+            ),
+            inline=False
+        )
+        
+        # Informations sur les keywords
+        embed.add_field(
+            name="🔍 **Système de Keywords**",
+            value=(
+                "• **Optionnel** : Le keyword est le dernier paramètre\n"
+                "• **Insensible à la casse** : PEPE = pepe = Pepe\n"
+                "• **Recherche** : Dans le nom ET le ticker du token\n"
+                "• **Protection** : Évite les tokens de test non désirés"
+            ),
+            inline=False
+        )
+        
+        # Informations techniques
+        embed.add_field(
+            name="⚡ **Fonctionnement Technique**",
+            value=(
+                "• **Détection** : Surveillance en temps réel des déploiements Clanker V4\n"
+                "• **Exécution** : Snipe automatique dès détection\n"
+                "• **Retry** : Jusqu'à 10 tentatives avec délai de 0.5s\n"
+                "• **Réseau** : Base (Base Network)\n"
+                "• **API** : 0x Protocol v2"
+            ),
+            inline=False
+        )
+        
+        embed.set_footer(text="Bot de Sniping Automatique - DexBaseBot")
+        
+        await ctx.send(embed=embed)
+
+    @commands.command()
     async def listsnipes(self, ctx):
         """Affiche la liste des snipes actifs."""
         snipes = self.db.get_active_snipes()
@@ -4108,9 +4230,11 @@ class ClankerMonitor(commands.Cog):
                 name = f"FID: `{snipe['tracked_fid']}`"
                 target = f"**FID:** `{snipe['tracked_fid']}`"
             
+            keyword_info = f"\n**Keyword:** {snipe['keyword']}" if snipe['keyword'] else ""
+            
             embed.add_field(
                 name=name,
-                value=f"{target}\n**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Wallet:** {snipe['wallet_id']}\n**Type:** {snipe['snipe_type']}\n**Créé:** {snipe['created_at']}",
+                value=f"{target}\n**Montant:** {snipe['snipe_amount_eth']} ETH\n**Tentatives:** {snipe['max_attempts']}\n**Wallet:** {snipe['wallet_id']}\n**Type:** {snipe['snipe_type']}{keyword_info}\n**Créé:** {snipe['created_at']}",
                 inline=False
             )
         
@@ -4148,6 +4272,17 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             await status_msg.edit(content=f"❌ Erreur lors du test de snipe: {str(e)}")
 
+    def _check_keyword_match(self, keyword: str, token_name: str, token_symbol: str) -> bool:
+        """Vérifie si le keyword est présent dans le nom ou le ticker du token (insensible à la casse)"""
+        if not keyword:
+            return True  # Pas de keyword = match automatique
+        
+        keyword_lower = keyword.lower()
+        name_lower = token_name.lower() if token_name else ""
+        symbol_lower = token_symbol.lower() if token_symbol else ""
+        
+        return keyword_lower in name_lower or keyword_lower in symbol_lower
+
     async def _execute_snipe(self, token_address: str, snipe_config: dict, token_name: str, token_symbol: str, channel):
         """Exécute un snipe automatique pour un token déployé par une adresse trackée avec retry."""
         try:
@@ -4157,6 +4292,12 @@ class ClankerMonitor(commands.Cog):
             max_attempts = snipe_config.get('max_attempts', 1)
             wallet_id = snipe_config.get('wallet_id', 'W1')
             snipe_type = snipe_config.get('snipe_type', 'address')
+            keyword = snipe_config.get('keyword')
+            
+            # Vérifier si le keyword correspond
+            if not self._check_keyword_match(keyword, token_name, token_symbol):
+                logger.info(f"🔍 Snipe ignoré - Keyword '{keyword}' non trouvé dans '{token_name}' ({token_symbol})")
+                return
             
             # Sélectionner le bon SniperManager
             sniper_manager = self.sniper_manager_w1 if wallet_id == 'W1' else self.sniper_manager_w2
@@ -4198,9 +4339,9 @@ class ClankerMonitor(commands.Cog):
                         snipe_embed.description = f"Exécution du snipe configuré pour {tracked_target} (Tentative {attempt}/{max_attempts})"
                         await status_msg.edit(embed=snipe_embed)
             
-                        # Exécuter le snipe
+            # Exécuter le snipe
                         result = await sniper_manager.snipe_token(token_address, eth_amount)
-                        
+            
                         if result["success"]:
                             # Succès du snipe
                             success_embed = discord.Embed(
@@ -4230,7 +4371,7 @@ class ClankerMonitor(commands.Cog):
                             await status_msg.edit(embed=success_embed, view=view)
                             logger.info(f"✅ Snipe automatique réussi à la tentative {attempt}: {result['tx_hash']}")
                             return  # Succès, sortir de la boucle
-                
+                        
                         else:
                             # Échec de cette tentative
                             logger.warning(f"⚠️ Tentative {attempt}/{max_attempts} échouée: {result['error']}")
