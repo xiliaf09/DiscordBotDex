@@ -734,6 +734,62 @@ class DatabaseManager:
                 'created_at': row[8]
             }
         return None
+    
+    def get_all_snipes_for_address(self, tracked_address: str) -> list:
+        """Récupère TOUS les snipes actifs pour une adresse trackée (W1 et W2)"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        
+        if self.db_type == 'postgresql':
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = %s AND is_active = TRUE", (tracked_address,))
+        else:
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_address = ? AND is_active = 1", (tracked_address,))
+        
+        rows = c.fetchall()
+        conn.close()
+        
+        snipes = []
+        for row in rows:
+            snipes.append({
+                'id': row[0],
+                'tracked_address': row[1],
+                'tracked_fid': row[2],
+                'snipe_amount_eth': float(row[3]),
+                'max_attempts': int(row[4]),
+                'wallet_id': row[5],
+                'snipe_type': row[6],
+                'keyword': row[7],
+                'created_at': row[8]
+            })
+        return snipes
+    
+    def get_all_snipes_for_fid(self, tracked_fid: str) -> list:
+        """Récupère TOUS les snipes actifs pour un FID tracké (W1 et W2)"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        
+        if self.db_type == 'postgresql':
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = %s AND is_active = TRUE", (tracked_fid,))
+        else:
+            c.execute("SELECT id, tracked_address, tracked_fid, snipe_amount_eth, max_attempts, wallet_id, snipe_type, keyword, created_at FROM active_snipes WHERE tracked_fid = ? AND is_active = 1", (tracked_fid,))
+        
+        rows = c.fetchall()
+        conn.close()
+        
+        snipes = []
+        for row in rows:
+            snipes.append({
+                'id': row[0],
+                'tracked_address': row[1],
+                'tracked_fid': row[2],
+                'snipe_amount_eth': float(row[3]),
+                'max_attempts': int(row[4]),
+                'wallet_id': row[5],
+                'snipe_type': row[6],
+                'keyword': row[7],
+                'created_at': row[8]
+            })
+        return snipes
 
 class SniperManager:
     """Gestionnaire des snipes utilisant l'API 0x"""
@@ -2696,19 +2752,19 @@ class ClankerMonitor(commands.Cog):
                                         await channel.send(embed=embed, view=view)
                                         logger.info(f"On-chain Clanker tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
                                         
-                                        # Vérifier s'il y a un snipe actif pour cette adresse
-                                        snipe_config = self.db.get_snipe_for_address(creator_address)
-                                        if snipe_config:
-                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} - Exécution du snipe sur {token_address}")
+                                        # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
+                                        snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        for snipe_config in snipe_configs:
+                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
-                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
-                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
-                                            if snipe_config_fid:
-                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                            snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            for snipe_config_fid in snipe_configs_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
                                                 # Exécuter le snipe en arrière-plan
                                                 asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
@@ -2949,19 +3005,19 @@ class ClankerMonitor(commands.Cog):
                                         await channel.send(embed=embed, view=view)
                                         logger.info(f"On-chain Clanker V4 tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
                                         
-                                        # Vérifier s'il y a un snipe actif pour cette adresse
-                                        snipe_config = self.db.get_snipe_for_address(creator_address)
-                                        if snipe_config:
-                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} - Exécution du snipe sur {token_address}")
+                                        # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
+                                        snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        for snipe_config in snipe_configs:
+                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
-                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
-                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
-                                            if snipe_config_fid:
-                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                            snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            for snipe_config_fid in snipe_configs_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
                                                 # Exécuter le snipe en arrière-plan
                                                 asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
@@ -3097,19 +3153,19 @@ class ClankerMonitor(commands.Cog):
                                         await channel.send(embed=embed, view=view)
                                         logger.info(f"On-chain Clanker V4 tracked address alert sent for {name} ({symbol}) {token_address} by {creator_address}")
                                         
-                                        # Vérifier s'il y a un snipe actif pour cette adresse
-                                        snipe_config = self.db.get_snipe_for_address(creator_address)
-                                        if snipe_config:
-                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} - Exécution du snipe sur {token_address}")
+                                        # Vérifier s'il y a des snipes actifs pour cette adresse (W1 et W2)
+                                        snipe_configs = self.db.get_all_snipes_for_address(creator_address)
+                                        for snipe_config in snipe_configs:
+                                            logger.info(f"🎯 Snipe actif détecté pour {creator_address} (Wallet: {snipe_config['wallet_id']}) - Exécution du snipe sur {token_address}")
                                             
                                             # Exécuter le snipe en arrière-plan
                                             asyncio.create_task(self._execute_snipe(token_address, snipe_config, name, symbol, channel))
                                         
-                                        # Vérifier s'il y a un snipe actif pour ce FID
+                                        # Vérifier s'il y a des snipes actifs pour ce FID (W1 et W2)
                                         if fid:
-                                            snipe_config_fid = self.db.get_snipe_for_fid(fid)
-                                            if snipe_config_fid:
-                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} - Exécution du snipe sur {token_address}")
+                                            snipe_configs_fid = self.db.get_all_snipes_for_fid(fid)
+                                            for snipe_config_fid in snipe_configs_fid:
+                                                logger.info(f"🎯 Snipe FID actif détecté pour {fid} (Wallet: {snipe_config_fid['wallet_id']}) - Exécution du snipe sur {token_address}")
                                                 
                                                 # Exécuter le snipe en arrière-plan
                                                 asyncio.create_task(self._execute_snipe(token_address, snipe_config_fid, name, symbol, channel))
