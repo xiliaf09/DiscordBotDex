@@ -1705,7 +1705,9 @@ class ClankerMonitor(commands.Cog):
     def _extract_anti_sniper_fees(self, tx_hash: str) -> dict:
         """Extract anti-sniper fee configuration from transaction logs"""
         try:
+            logger.info(f"🔍 [ANTI-SNIPER] Starting fee extraction for transaction: {tx_hash}")
             receipt = self.w3_ws.eth.get_transaction_receipt(tx_hash)
+            logger.info(f"🔍 [ANTI-SNIPER] Transaction receipt retrieved, {len(receipt.logs)} logs found")
             
             # ABI for FeeConfigSet event
             fee_config_abi = {
@@ -1722,10 +1724,12 @@ class ClankerMonitor(commands.Cog):
             
             # Create contract instance for event processing
             fee_contract = self.w3_ws.eth.contract(abi=[fee_config_abi])
+            logger.info(f"🔍 [ANTI-SNIPER] Fee contract instance created, processing {len(receipt.logs)} logs")
             
             # Process logs to find FeeConfigSet events
-            for log in receipt.logs:
+            for i, log in enumerate(receipt.logs):
                 try:
+                    logger.info(f"🔍 [ANTI-SNIPER] Processing log {i+1}/{len(receipt.logs)}: address={log.address.hex()}, topics={len(log.topics)}")
                     decoded_log = fee_contract.events.FeeConfigSet().process_log(log)
                     if decoded_log:
                         starting_fee = decoded_log['args']['startingFee']
@@ -1736,7 +1740,7 @@ class ClankerMonitor(commands.Cog):
                         starting_fee_percent = (starting_fee * 1.2) / 10000  # Convert to percentage
                         ending_fee_percent = (ending_fee * 1.2) / 10000
                         
-                        logger.info(f"Anti-sniper fees found: Starting {starting_fee_percent:.1f}%, Ending {ending_fee_percent:.1f}%, Decay {seconds_to_decay}s")
+                        logger.info(f"✅ [ANTI-SNIPER] FeeConfigSet event found! Starting {starting_fee} ({starting_fee_percent:.1f}%), Ending {ending_fee} ({ending_fee_percent:.1f}%), Decay {seconds_to_decay}s")
                         
                         return {
                             'starting_fee': starting_fee,
@@ -1746,12 +1750,14 @@ class ClankerMonitor(commands.Cog):
                             'ending_fee_percent': ending_fee_percent
                         }
                 except Exception as e:
+                    logger.debug(f"🔍 [ANTI-SNIPER] Log {i+1} doesn't match FeeConfigSet: {e}")
                     continue  # Skip logs that don't match FeeConfigSet
             
+            logger.warning(f"⚠️ [ANTI-SNIPER] No FeeConfigSet event found in transaction {tx_hash}")
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting anti-sniper fees from transaction {tx_hash}: {e}")
+            logger.error(f"❌ [ANTI-SNIPER] Error extracting anti-sniper fees from transaction {tx_hash}: {e}")
             return None
 
     def _load_seen_tokens(self) -> Set[str]:
@@ -2730,6 +2736,7 @@ class ClankerMonitor(commands.Cog):
 
     async def listen_onchain_clanker(self):
         await self.bot.wait_until_ready()
+        logger.info("🚀 [ANTI-SNIPER] Clanker V3 listener started with anti-sniper fees support")
         if not self.channel:
             self.channel = self.bot.get_channel(CHANNEL_ID)
         channel = self.channel
@@ -2784,6 +2791,7 @@ class ClankerMonitor(commands.Cog):
                                         logger.info(f"Adresse trackée V3 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
                                         
                                         # Extract anti-sniper fees from transaction
+                                        logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for tracked address alert: {token_address}")
                                         fee_data = self._extract_anti_sniper_fees(tx_hash)
                                         
                                         # Envoyer l'alerte spéciale verte pour les adresses trackées
@@ -2801,11 +2809,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Add anti-sniper fee information if available
                                         if fee_data:
+                                            logger.info(f"✅ [ALERT] Adding anti-sniper fees to tracked address alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                             embed.add_field(
                                                 name="🛡️ Frais Anti-Sniper", 
                                                 value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                                 inline=True
                                             )
+                                        else:
+                                            logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for tracked address alert: {token_address}")
                                         
                                         if image:
                                             embed.set_thumbnail(url=image)
@@ -2881,6 +2892,7 @@ class ClankerMonitor(commands.Cog):
                                     if keyword_match:
                                         logger.info(f"Token sans FID mais avec mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Envoi d'alerte Discord")
                                         # Extract anti-sniper fees from transaction
+                                        logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for tracked address alert: {token_address}")
                                         fee_data = self._extract_anti_sniper_fees(tx_hash)
                                         
                                         # Envoyer l'alerte Discord pour les tokens avec mots-clés
@@ -2897,11 +2909,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Add anti-sniper fee information if available
                                         if fee_data:
+                                            logger.info(f"✅ [ALERT] Adding anti-sniper fees to tracked address alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                             embed.add_field(
                                                 name="🛡️ Frais Anti-Sniper", 
                                                 value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                                 inline=True
                                             )
+                                        else:
+                                            logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for tracked address alert: {token_address}")
                                         
                                         # Créer la vue avec les boutons
                                         view = discord.ui.View()
@@ -2943,6 +2958,7 @@ class ClankerMonitor(commands.Cog):
                                 
                                 
                                 # Extract anti-sniper fees from transaction
+                                logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for main alert: {token_address}")
                                 fee_data = self._extract_anti_sniper_fees(tx_hash)
                                 
                                 # Envoie l'alerte Discord
@@ -2960,11 +2976,14 @@ class ClankerMonitor(commands.Cog):
                                 
                                 # Add anti-sniper fee information if available
                                 if fee_data:
+                                    logger.info(f"✅ [ALERT] Adding anti-sniper fees to main alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                     embed.add_field(
                                         name="🛡️ Frais Anti-Sniper", 
                                         value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                         inline=True
                                     )
+                                else:
+                                    logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for main alert: {token_address}")
                                 
                                 # Ajout du lien de la transaction de déploiement
                                 tx_link = f"https://basescan.org/tx/{tx_hash.hex()}"
@@ -3019,6 +3038,7 @@ class ClankerMonitor(commands.Cog):
 
     async def listen_onchain_clanker_v4(self):
         await self.bot.wait_until_ready()
+        logger.info("🚀 [ANTI-SNIPER] Clanker V4 listener started with anti-sniper fees support")
         if not self.channel:
             self.channel = self.bot.get_channel(CHANNEL_ID)
         channel = self.channel
@@ -3073,6 +3093,7 @@ class ClankerMonitor(commands.Cog):
                                         logger.info(f"Adresse trackée V4 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
                                         
                                         # Extract anti-sniper fees from transaction
+                                        logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for tracked address alert: {token_address}")
                                         fee_data = self._extract_anti_sniper_fees(tx_hash)
                                         
                                         # Envoyer l'alerte spéciale verte pour les adresses trackées V4
@@ -3090,11 +3111,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Add anti-sniper fee information if available
                                         if fee_data:
+                                            logger.info(f"✅ [ALERT] Adding anti-sniper fees to tracked address alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                             embed.add_field(
                                                 name="🛡️ Frais Anti-Sniper", 
                                                 value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                                 inline=True
                                             )
+                                        else:
+                                            logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for tracked address alert: {token_address}")
                                         
                                         if image:
                                             embed.set_thumbnail(url=image)
@@ -3170,6 +3194,7 @@ class ClankerMonitor(commands.Cog):
                                     if keyword_match:
                                         logger.info(f"Token V4 sans FID mais avec mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Envoi d'alerte Discord")
                                         # Extract anti-sniper fees from transaction
+                                        logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for tracked address alert: {token_address}")
                                         fee_data = self._extract_anti_sniper_fees(tx_hash)
                                         
                                         # Envoyer l'alerte Discord pour les tokens avec mots-clés
@@ -3186,11 +3211,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Add anti-sniper fee information if available
                                         if fee_data:
+                                            logger.info(f"✅ [ALERT] Adding anti-sniper fees to tracked address alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                             embed.add_field(
                                                 name="🛡️ Frais Anti-Sniper", 
                                                 value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                                 inline=True
                                             )
+                                        else:
+                                            logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for tracked address alert: {token_address}")
                                         
                                         # Créer la vue avec les boutons
                                         view = discord.ui.View()
@@ -3245,6 +3273,7 @@ class ClankerMonitor(commands.Cog):
                                         logger.info(f"Adresse trackée V4 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
                                         
                                         # Extract anti-sniper fees from transaction
+                                        logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for tracked address alert: {token_address}")
                                         fee_data = self._extract_anti_sniper_fees(tx_hash)
                                         
                                         # Envoyer l'alerte spéciale verte pour les adresses trackées V4
@@ -3262,11 +3291,14 @@ class ClankerMonitor(commands.Cog):
                                         
                                         # Add anti-sniper fee information if available
                                         if fee_data:
+                                            logger.info(f"✅ [ALERT] Adding anti-sniper fees to tracked address alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                             embed.add_field(
                                                 name="🛡️ Frais Anti-Sniper", 
                                                 value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                                 inline=True
                                             )
+                                        else:
+                                            logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for tracked address alert: {token_address}")
                                         
                                         if image:
                                             embed.set_thumbnail(url=image)
@@ -3324,6 +3356,7 @@ class ClankerMonitor(commands.Cog):
                                     logger.error(f"Erreur lors de l'extraction de l'adresse créateur V4: {e}")
                                 
                                 # Extract anti-sniper fees from transaction
+                                logger.info(f"🔍 [ALERT] Extracting anti-sniper fees for main alert: {token_address}")
                                 fee_data = self._extract_anti_sniper_fees(tx_hash)
                                 
                                 # Envoie l'alerte Discord
@@ -3341,11 +3374,14 @@ class ClankerMonitor(commands.Cog):
                                 
                                 # Add anti-sniper fee information if available
                                 if fee_data:
+                                    logger.info(f"✅ [ALERT] Adding anti-sniper fees to main alert: {fee_data['starting_fee_percent']:.1f}% -> {fee_data['ending_fee_percent']:.1f}% over {fee_data['seconds_to_decay']}s")
                                     embed.add_field(
                                         name="🛡️ Frais Anti-Sniper", 
                                         value=f"**Départ:** {fee_data['starting_fee_percent']:.1f}%\n**Fin:** {fee_data['ending_fee_percent']:.1f}%\n**Durée:** {fee_data['seconds_to_decay']}s", 
                                         inline=True
                                     )
+                                else:
+                                    logger.warning(f"⚠️ [ALERT] No anti-sniper fees found for main alert: {token_address}")
                                 
                                 # Ajout du lien de la transaction de déploiement
                                 tx_link = f"https://basescan.org/tx/{tx_hash.hex()}"
