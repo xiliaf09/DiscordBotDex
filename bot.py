@@ -1729,7 +1729,9 @@ class ClankerMonitor(commands.Cog):
             # Process logs to find FeeConfigSet events
             for i, log in enumerate(receipt.logs):
                 try:
-                    logger.info(f"🔍 [ANTI-SNIPER] Processing log {i+1}/{len(receipt.logs)}: address={log.address.hex()}, topics={len(log.topics)}")
+                    # Handle both bytes and string addresses
+                    address_str = log.address.hex() if hasattr(log.address, 'hex') else str(log.address)
+                    logger.info(f"🔍 [ANTI-SNIPER] Processing log {i+1}/{len(receipt.logs)}: address={address_str}, topics={len(log.topics)}")
                     
                     # Try to decode as FeeConfigSet event
                     decoded_log = fee_contract.events.FeeConfigSet().process_log(log)
