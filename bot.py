@@ -1753,7 +1753,7 @@ class ClankerMonitor(commands.Cog):
                         }
                     
                 except Exception as e:
-                    logger.debug(f"🔍 [ANTI-SNIPER] Log {i+1} doesn't match FeeConfigSet: {e}")
+                    logger.info(f"🔍 [ANTI-SNIPER] Log {i+1} doesn't match FeeConfigSet: {e}")
                     continue  # Skip logs that don't match FeeConfigSet
             
             logger.warning(f"⚠️ [ANTI-SNIPER] No FeeConfigSet event found in transaction {tx_hash}")
@@ -1761,6 +1761,8 @@ class ClankerMonitor(commands.Cog):
             
         except Exception as e:
             logger.error(f"❌ [ANTI-SNIPER] Error extracting anti-sniper fees from transaction {tx_hash}: {e}")
+            import traceback
+            logger.error(f"❌ [ANTI-SNIPER] Full traceback: {traceback.format_exc()}")
             return None
 
     def _load_seen_tokens(self) -> Set[str]:
