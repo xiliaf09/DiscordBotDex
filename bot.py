@@ -1730,6 +1730,8 @@ class ClankerMonitor(commands.Cog):
             for i, log in enumerate(receipt.logs):
                 try:
                     logger.info(f"🔍 [ANTI-SNIPER] Processing log {i+1}/{len(receipt.logs)}: address={log.address.hex()}, topics={len(log.topics)}")
+                    
+                    # Try to decode as FeeConfigSet event
                     decoded_log = fee_contract.events.FeeConfigSet().process_log(log)
                     if decoded_log:
                         starting_fee = decoded_log['args']['startingFee']
@@ -1749,6 +1751,7 @@ class ClankerMonitor(commands.Cog):
                             'starting_fee_percent': starting_fee_percent,
                             'ending_fee_percent': ending_fee_percent
                         }
+                    
                 except Exception as e:
                     logger.debug(f"🔍 [ANTI-SNIPER] Log {i+1} doesn't match FeeConfigSet: {e}")
                     continue  # Skip logs that don't match FeeConfigSet
