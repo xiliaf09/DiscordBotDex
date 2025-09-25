@@ -4553,7 +4553,7 @@ class ClankerMonitor(commands.Cog):
         except Exception as e:
             await status_msg.edit(content=f"❌ Erreur lors du test de snipe: {str(e)}")
 
-    def _check_keyword_match(self, keyword: str, token_name: str, token_symbol: str) -> bool:
+    def _check_snipe_keyword_match(self, keyword: str, token_name: str, token_symbol: str) -> bool:
         """Vérifie si le keyword est présent dans le nom ou le ticker du token (insensible à la casse)"""
         if not keyword:
             return True  # Pas de keyword = match automatique
@@ -4576,7 +4576,7 @@ class ClankerMonitor(commands.Cog):
             keyword = snipe_config.get('keyword')
             
             # Vérifier si le keyword correspond
-            if not self._check_keyword_match(keyword, token_name, token_symbol):
+            if not self._check_snipe_keyword_match(keyword, token_name, token_symbol):
                 logger.info(f"🔍 Snipe ignoré - Keyword '{keyword}' non trouvé dans '{token_name}' ({token_symbol})")
                 return
             
