@@ -2953,7 +2953,7 @@ class ClankerMonitor(commands.Cog):
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
                                     else:
-                                        logger.info(f"Token sans FID et sans mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                        logger.info(f"🔍 [NO FID] Token sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
@@ -3255,7 +3255,7 @@ class ClankerMonitor(commands.Cog):
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
                                     else:
-                                        logger.info(f"Token V4 sans FID et sans mot-clé whitelisté détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
+                                        logger.info(f"🔍 [NO FID V4] Token V4 sans FID détecté : {name} ({symbol}) {token_address} - Ajout à la surveillance volume uniquement")
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
