@@ -1485,11 +1485,11 @@ class TokenMonitor(commands.Cog):
                 'User-Agent': 'Mozilla/5.0'
             }
             
-            logger.info("Fetching latest token profiles...")
+            logger.debug("Fetching latest token profiles...")
             response = requests.get(DEXSCREENER_API_URL, headers=headers)
             response.raise_for_status()
             tokens = response.json()
-            logger.info(f"Received {len(tokens)} tokens from API")
+            logger.debug(f"Received {len(tokens)} tokens from API")
 
             # Filter for monitored blockchain tokens
             new_tokens = []
@@ -1513,8 +1513,7 @@ class TokenMonitor(commands.Cog):
 
             if new_tokens:
                 logger.info(f"Found {len(new_tokens)} new tokens")
-            else:
-                logger.debug("No new tokens found")
+            # Suppression du log "No new tokens found" pour éviter le spam
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching tokens: {e}")
