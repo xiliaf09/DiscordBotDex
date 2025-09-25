@@ -4204,8 +4204,8 @@ class ClankerMonitor(commands.Cog):
             return
         
         # Vérifier le nombre de tentatives
-        if max_attempts < 1 or max_attempts > 10:
-            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 10.")
+        if max_attempts < 1 or max_attempts > 30:
+            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 30.")
             return
         
         # Vérifier le wallet_id
@@ -4291,8 +4291,8 @@ class ClankerMonitor(commands.Cog):
             return
         
         # Vérifier le nombre de tentatives
-        if max_attempts < 1 or max_attempts > 10:
-            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 10.")
+        if max_attempts < 1 or max_attempts > 30:
+            await ctx.send("❌ Le nombre de tentatives doit être entre 1 et 30.")
             return
         
         # Vérifier le wallet_id
@@ -4374,7 +4374,7 @@ class ClankerMonitor(commands.Cog):
                 "Configure un snipe pour une adresse Ethereum\n"
                 "• **adresse** : Adresse Ethereum à tracker\n"
                 "• **montant** : Montant en ETH (ex: 0.001)\n"
-                "• **tentatives** : Nombre de tentatives (1-10)\n"
+                "• **tentatives** : Nombre de tentatives (1-30)\n"
                 "• **W1/W2** : Wallet à utiliser\n"
                 "• **keyword** : Mot-clé optionnel dans le nom/ticker\n\n"
                 
@@ -4382,7 +4382,7 @@ class ClankerMonitor(commands.Cog):
                 "Configure un snipe pour un FID Farcaster\n"
                 "• **FID** : ID Farcaster à tracker\n"
                 "• **montant** : Montant en ETH (ex: 0.001)\n"
-                "• **tentatives** : Nombre de tentatives (1-10)\n"
+                "• **tentatives** : Nombre de tentatives (1-30)\n"
                 "• **W1/W2** : Wallet à utiliser\n"
                 "• **keyword** : Mot-clé optionnel dans le nom/ticker"
             ),
@@ -4449,7 +4449,7 @@ class ClankerMonitor(commands.Cog):
             value=(
                 "• **Détection** : Surveillance en temps réel des déploiements Clanker V4\n"
                 "• **Exécution** : Snipe automatique dès détection\n"
-                "• **Retry** : Jusqu'à 10 tentatives avec délai de 0.5s\n"
+                "• **Retry** : Jusqu'à 30 tentatives avec délai de 0.5s\n"
                 "• **Réseau** : Base (Base Network)\n"
                 "• **API** : 0x Protocol v2"
             ),
