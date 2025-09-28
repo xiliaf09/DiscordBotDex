@@ -366,6 +366,13 @@ class DatabaseManager:
                         is_active BOOLEAN DEFAULT TRUE
                     )
                 """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS banned_deploy_addresses (
+                        address VARCHAR(42) PRIMARY KEY,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        added_by VARCHAR(50)
+                    )
+                """)
             else:
                 # Tables SQLite
                 c.execute("""
@@ -408,6 +415,13 @@ class DatabaseManager:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_active BOOLEAN DEFAULT 1,
                         FOREIGN KEY (tracked_address) REFERENCES tracked_addresses(address)
+                    )
+                """)
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS banned_deploy_addresses (
+                        address TEXT PRIMARY KEY,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        added_by TEXT
                     )
                 """)
             
@@ -600,6 +614,38 @@ class DatabaseManager:
             c.execute("DELETE FROM tracked_addresses WHERE address = %s", (address,))
         else:
             c.execute("DELETE FROM tracked_addresses WHERE address = ?", (address,))
+        conn.commit()
+        conn.close()
+    
+    # Gestion des adresses de déploiement bannies
+    def get_banned_deploy_addresses(self) -> Set[str]:
+        """Récupère toutes les adresses de déploiement bannies"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute("SELECT address FROM banned_deploy_addresses")
+        addresses = {row[0].lower() for row in c.fetchall()}
+        conn.close()
+        return addresses
+    
+    def add_banned_deploy_address(self, address: str, added_by: str = None):
+        """Ajoute une adresse à la liste des adresses de déploiement bannies"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        if self.db_type == 'postgresql':
+            c.execute("INSERT INTO banned_deploy_addresses (address, added_by) VALUES (%s, %s) ON CONFLICT (address) DO NOTHING", (address.lower(), added_by))
+        else:
+            c.execute("INSERT OR IGNORE INTO banned_deploy_addresses (address, added_by) VALUES (?, ?)", (address.lower(), added_by))
+        conn.commit()
+        conn.close()
+    
+    def remove_banned_deploy_address(self, address: str):
+        """Supprime une adresse de la liste des adresses de déploiement bannies"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        if self.db_type == 'postgresql':
+            c.execute("DELETE FROM banned_deploy_addresses WHERE address = %s", (address.lower(),))
+        else:
+            c.execute("DELETE FROM banned_deploy_addresses WHERE address = ?", (address.lower(),))
         conn.commit()
         conn.close()
     
@@ -1627,6 +1673,9 @@ class TokenMonitor(commands.Cog):
         embed.add_field(name="!listbanned", value="Affiche la liste des FIDs bannis.", inline=False)
         embed.add_field(name="!importbanlist", value="Importe des listes de FIDs à bannir depuis des fichiers texte.", inline=False)
         embed.add_field(name="!exportbanlist", value="Exporte la liste des FIDs bannis dans un fichier.", inline=False)
+        embed.add_field(name="!bandeployaddress <address>", value="Bannit une adresse de déploiement - masque tous ses nouveaux clankers.", inline=False)
+        embed.add_field(name="!unbandeployaddress <address>", value="Retire une adresse de la liste des adresses bannies.", inline=False)
+        embed.add_field(name="!listbanneddeployaddresses", value="Affiche la liste des adresses de déploiement bannies.", inline=False)
         embed.add_field(name="!fidcheck <contract>", value="Vérifie le FID associé à un contrat Clanker.", inline=False)
         embed.add_field(name="!spamcheck", value="Liste les FIDs ayant déployé plus d'un token dans les dernières 24h.", inline=False)
         embed.add_field(name="!whitelist <fid>", value="Ajoute un FID à la whitelist (alertes premium).", inline=False)
@@ -1675,6 +1724,7 @@ class ClankerMonitor(commands.Cog):
         self.whitelisted_fids: Set[str] = self.db.get_whitelisted_fids()
         self.keyword_whitelist: Set[str] = self.db.get_keyword_whitelist()
         self.tracked_addresses: Set[str] = self.db.get_tracked_addresses()
+        self.banned_deploy_addresses: Set[str] = self.db.get_banned_deploy_addresses()
         self.default_volume_threshold = self.db.get_volume_threshold()
         self.emergency_call_threshold = self.db.get_emergency_call_threshold()
         
@@ -1685,7 +1735,7 @@ class ClankerMonitor(commands.Cog):
             # Recharger après migration
             self._refresh_data_from_db()
         
-        logger.info(f"Loaded from database: {len(self.banned_fids)} banned FIDs, {len(self.whitelisted_fids)} whitelisted FIDs, {len(self.keyword_whitelist)} keywords, {len(self.tracked_addresses)} tracked addresses")
+        logger.info(f"Loaded from database: {len(self.banned_fids)} banned FIDs, {len(self.whitelisted_fids)} whitelisted FIDs, {len(self.keyword_whitelist)} keywords, {len(self.tracked_addresses)} tracked addresses, {len(self.banned_deploy_addresses)} banned deploy addresses")
         logger.info(f"Volume threshold: {self.default_volume_threshold}, Emergency call threshold: {self.emergency_call_threshold}")
         # --- Ajout Web3 WebSocket et contrat factory ---
         self.w3_ws = Web3(Web3.WebsocketProvider(QUICKNODE_WSS))
@@ -1878,6 +1928,7 @@ class ClankerMonitor(commands.Cog):
         self.whitelisted_fids = self.db.get_whitelisted_fids()
         self.keyword_whitelist = self.db.get_keyword_whitelist()
         self.tracked_addresses = self.db.get_tracked_addresses()
+        self.banned_deploy_addresses = self.db.get_banned_deploy_addresses()
         self.default_volume_threshold = self.db.get_volume_threshold()
         self.emergency_call_threshold = self.db.get_emergency_call_threshold()
 
@@ -2672,6 +2723,13 @@ class ClankerMonitor(commands.Cog):
                 continue
             if info.get('alerted'):
                 continue
+            
+            # Vérifier si l'adresse du créateur est bannie
+            creator_address = info.get('creator_address')
+            if creator_address and creator_address.lower() in self.banned_deploy_addresses:
+                logger.info(f"🚫 Token {contract_address} ignoré pour volume - créateur banni: {creator_address}")
+                to_remove.append(contract_address)
+                continue
             # Appel Dexscreener
             url = f"https://api.dexscreener.com/latest/dex/tokens/{contract_address}"
             try:
@@ -2792,6 +2850,11 @@ class ClankerMonitor(commands.Cog):
                                     elif 'msgSender' in event['args']:
                                         creator_address = event['args']['msgSender']
                                     
+                                    # Vérifier si l'adresse du créateur est bannie
+                                    if creator_address and creator_address.lower() in self.banned_deploy_addresses:
+                                        logger.info(f"🚫 Clanker déployé par une adresse bannie ignoré: {name} ({symbol}) {token_address} par {creator_address}")
+                                        continue  # Ignorer ce clanker
+                                    
                                     if creator_address and creator_address in self.tracked_addresses:
                                         is_tracked_address = True
                                         logger.info(f"Adresse trackée V3 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
@@ -2871,7 +2934,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token tracké {token_address.lower()} à la surveillance volume (on-chain)")
                                         continue  # Skip le reste du traitement normal
@@ -2949,7 +3013,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
                                     else:
@@ -2957,7 +3022,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token sans FID {token_address.lower()} à la surveillance volume (on-chain)")
                                     continue  # Skip le reste du traitement normal
@@ -3094,6 +3160,11 @@ class ClankerMonitor(commands.Cog):
                                     elif 'msgSender' in event['args']:
                                         creator_address = event['args']['msgSender']
                                     
+                                    # Vérifier si l'adresse du créateur est bannie
+                                    if creator_address and creator_address.lower() in self.banned_deploy_addresses:
+                                        logger.info(f"🚫 Clanker V4 déployé par une adresse bannie ignoré: {name} ({symbol}) {token_address} par {creator_address}")
+                                        continue  # Ignorer ce clanker
+                                    
                                     if creator_address and creator_address in self.tracked_addresses:
                                         is_tracked_address = True
                                         logger.info(f"Adresse trackée V4 détectée : {creator_address} a déployé {name} ({symbol}) {token_address}")
@@ -3173,7 +3244,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 tracké {token_address.lower()} à la surveillance volume (on-chain)")
                                         continue  # Skip le reste du traitement normal
@@ -3251,7 +3323,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 avec mot-clé {token_address.lower()} à la surveillance volume (on-chain)")
                                     else:
@@ -3259,7 +3332,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 sans FID {token_address.lower()} à la surveillance volume (on-chain)")
                                     continue  # Skip le reste du traitement normal
@@ -3353,7 +3427,8 @@ class ClankerMonitor(commands.Cog):
                                         # Ajout à la surveillance volume
                                         self.tracked_clanker_tokens[token_address.lower()] = {
                                             'first_seen': time.time(),
-                                            'alerted': False
+                                            'alerted': False,
+                                            'creator_address': creator_address
                                         }
                                         logger.info(f"[VOLUME TRACK] Ajout du token V4 tracké {token_address.lower()} à la surveillance volume (on-chain)")
                                         continue  # Skip le reste du traitement normal
@@ -4899,6 +4974,122 @@ class ClankerMonitor(commands.Cog):
         """Désactive les alertes pour les tokens déployés via Bankr"""
         self.bankr_enabled = False
         await ctx.send("❌ Alertes Bankr désactivées")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def bandeployaddress(self, ctx, address: str):
+        """Bannit une adresse de déploiement - tous les nouveaux clankers déployés par cette adresse seront masqués
+        
+        Usage: !bandeployaddress 0x1234567890123456789012345678901234567890"""
+        try:
+            # Vérifier si l'adresse est valide
+            if not address.startswith('0x') or len(address) != 42:
+                await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x1234...")
+                return
+            
+            # Normaliser l'adresse (minuscules)
+            address = address.lower()
+            
+            # Vérifier si l'adresse est déjà bannie
+            if address in self.banned_deploy_addresses:
+                await ctx.send(f"⚠️ L'adresse `{address}` est déjà bannie.")
+                return
+            
+            # Ajouter l'adresse à la banlist
+            self.db.add_banned_deploy_address(address, str(ctx.author))
+            self.banned_deploy_addresses.add(address)
+            
+            embed = discord.Embed(
+                title="🚫 Adresse de déploiement bannie",
+                description=f"L'adresse `{address}` a été ajoutée à la liste des adresses bannies.",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(name="Ajoutée par", value=ctx.author.mention, inline=True)
+            embed.add_field(name="Total adresses bannies", value=f"{len(self.banned_deploy_addresses)}", inline=True)
+            embed.set_footer(text="Tous les nouveaux clankers déployés par cette adresse seront masqués")
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Address {address} banned by {ctx.author}")
+            
+        except Exception as e:
+            logger.error(f"Error banning deploy address: {e}")
+            await ctx.send(f"❌ Erreur lors du bannissement de l'adresse: {str(e)}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def unbandeployaddress(self, ctx, address: str):
+        """Retire une adresse de la liste des adresses de déploiement bannies
+        
+        Usage: !unbandeployaddress 0x1234567890123456789012345678901234567890"""
+        try:
+            # Vérifier si l'adresse est valide
+            if not address.startswith('0x') or len(address) != 42:
+                await ctx.send("❌ Adresse Ethereum invalide. Format attendu: 0x1234...")
+                return
+            
+            # Normaliser l'adresse (minuscules)
+            address = address.lower()
+            
+            # Vérifier si l'adresse est bannie
+            if address not in self.banned_deploy_addresses:
+                await ctx.send(f"⚠️ L'adresse `{address}` n'est pas bannie.")
+                return
+            
+            # Retirer l'adresse de la banlist
+            self.db.remove_banned_deploy_address(address)
+            self.banned_deploy_addresses.discard(address)
+            
+            embed = discord.Embed(
+                title="✅ Adresse de déploiement débannie",
+                description=f"L'adresse `{address}` a été retirée de la liste des adresses bannies.",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(name="Retirée par", value=ctx.author.mention, inline=True)
+            embed.add_field(name="Total adresses bannies", value=f"{len(self.banned_deploy_addresses)}", inline=True)
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Address {address} unbanned by {ctx.author}")
+            
+        except Exception as e:
+            logger.error(f"Error unbanning deploy address: {e}")
+            await ctx.send(f"❌ Erreur lors du débannissement de l'adresse: {str(e)}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def listbanneddeployaddresses(self, ctx):
+        """Affiche la liste des adresses de déploiement bannies"""
+        try:
+            if not self.banned_deploy_addresses:
+                await ctx.send("✅ Aucune adresse de déploiement n'est bannie.")
+                return
+            
+            # Créer un embed avec la liste
+            embed = discord.Embed(
+                title="🚫 Adresses de déploiement bannies",
+                description=f"Total: {len(self.banned_deploy_addresses)} adresse(s)",
+                color=discord.Color.orange(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Diviser la liste en chunks si trop longue
+            addresses = list(self.banned_deploy_addresses)
+            chunk_size = 10
+            
+            for i in range(0, len(addresses), chunk_size):
+                chunk = addresses[i:i + chunk_size]
+                embed.add_field(
+                    name=f"Adresses {i+1}-{min(i+chunk_size, len(addresses))}",
+                    value="\n".join([f"`{addr}`" for addr in chunk]),
+                    inline=False
+                )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error listing banned deploy addresses: {e}")
+            await ctx.send(f"❌ Erreur lors de l'affichage de la liste: {str(e)}")
 
     @commands.command()
     async def imgon(self, ctx):
