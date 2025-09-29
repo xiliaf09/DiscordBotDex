@@ -55,47 +55,58 @@ class SolanaTracker:
         self.notification_callbacks.append(callback)
     
     async def start_tracking(self):
-        """Start tracking addresses via WebSocket"""
+        """Start tracking addresses via polling method"""
         if not self.tracked_addresses:
             logger.warning("No addresses to track")
             return
         
         try:
             logger.info(f"Starting Solana tracking for {len(self.tracked_addresses)} addresses...")
-            logger.info(f"WebSocket URL: {self.ws_url}")
-            
-            # Create WebSocket connection
-            self.ws_connection = await connect(self.ws_url)
-            logger.info("Connected to Solana WebSocket")
-            
-            # Subscribe to logs for each tracked address
-            for address in self.tracked_addresses:
-                try:
-                    pubkey = Pubkey.from_string(address)
-                    # Use logs subscription with all filter to catch all logs
-                    await self.ws_connection.logs_subscribe(
-                        commitment=Commitment("confirmed")
-                    )
-                    logger.info(f"Subscribed to all logs for {address}")
-                except Exception as e:
-                    logger.error(f"Error subscribing to {address}: {e}")
-            
             self.is_running = True
+            
+            # Start polling task for each address
+            for address in self.tracked_addresses:
+                asyncio.create_task(self.poll_address_transactions(address))
+            
             logger.info(f"Started tracking {len(self.tracked_addresses)} addresses")
             
-            # Listen for messages
-            async for message in self.ws_connection:
-                if not self.is_running:
-                    break
-                    
-                await self.handle_websocket_message(message)
+            # Keep the task running
+            while self.is_running:
+                await asyncio.sleep(1)
                 
         except Exception as e:
-            logger.error(f"Error in WebSocket connection: {e}")
-        finally:
-            if self.ws_connection:
-                await self.ws_connection.close()
-                logger.info("Solana WebSocket connection closed")
+            logger.error(f"Error in tracking: {e}")
+    
+    async def poll_address_transactions(self, address: str):
+        """Poll an address for new transactions"""
+        last_signature = None
+        
+        while self.is_running:
+            try:
+                # Get recent transactions
+                recent_txs = await self.get_recent_transactions(address, limit=5)
+                
+                if recent_txs:
+                    # Check if we have new transactions
+                    current_signature = recent_txs[0].get('signature')
+                    
+                    if last_signature and current_signature != last_signature:
+                        logger.info(f"New transaction detected for {address}: {current_signature}")
+                        
+                        # Process the new transaction
+                        for tx in recent_txs:
+                            if tx.get('signature') == current_signature:
+                                await self.process_transaction(address, tx)
+                                break
+                    
+                    last_signature = current_signature
+                
+                # Poll every 5 seconds
+                await asyncio.sleep(5)
+                
+            except Exception as e:
+                logger.error(f"Error polling address {address}: {e}")
+                await asyncio.sleep(10)  # Wait longer on error
     
     async def handle_websocket_message(self, message):
         """Handle incoming WebSocket messages"""
@@ -175,21 +186,13 @@ class SolanaTracker:
             )
             
             transactions = []
-            for sig_info in response.value:
-                # Get transaction details
-                tx_response = await self.client.get_transaction(
-                    Signature.from_string(sig_info.signature),
-                    commitment=Commitment("confirmed"),
-                    max_supported_transaction_version=0
-                )
-                
-                if tx_response.value:
-                    tx_data = tx_response.value
+            if response.value:
+                for sig_info in response.value:
                     transactions.append({
-                        'signature': sig_info.signature,
+                        'signature': str(sig_info.signature),
                         'slot': sig_info.slot,
                         'block_time': sig_info.block_time,
-                        'transaction': tx_data
+                        'confirmation_status': sig_info.confirmation_status
                     })
             
             return transactions
@@ -202,14 +205,22 @@ class SolanaTracker:
         """Process a transaction and send notifications if needed"""
         try:
             signature = tx_data['signature']
+            logger.info(f"Processing transaction {signature} for {address}")
             
             # Check if we already processed this transaction
             existing_txs = self.db.get_recent_transactions(address, limit=100)
             if any(tx['signature'] == signature for tx in existing_txs):
+                logger.info(f"Transaction {signature} already processed, skipping")
                 return
             
-            # Analyze transaction type and amount
-            tx_info = await self.analyze_transaction(tx_data['transaction'])
+            # Get full transaction details
+            transaction = await self.get_transaction_details(signature)
+            if not transaction:
+                logger.warning(f"Could not get transaction details for {signature}")
+                return
+            
+            # Analyze transaction
+            tx_info = await self.analyze_transaction(transaction)
             
             # Store in database
             self.db.add_transaction(
@@ -222,10 +233,9 @@ class SolanaTracker:
                 slot=tx_data.get('slot')
             )
             
-            # Check notification settings
-            settings = self.db.get_notification_settings(address)
-            if settings and self.should_notify(tx_info, settings):
-                await self.send_notification(address, signature, tx_info)
+            # Send notification (always notify for now)
+            await self.send_notification(address, signature, tx_info)
+            logger.info(f"Notification sent for transaction {signature}")
                 
         except Exception as e:
             logger.error(f"Error processing transaction: {e}")
