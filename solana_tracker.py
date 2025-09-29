@@ -7,7 +7,7 @@ from typing import Dict, List, Callable, Optional
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.websocket_api import connect
 from solana.rpc.commitment import Commitment
-from solana.rpc.types import TxOpts
+from solana.rpc.types import TxOpts, LogsFilter
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 import config
@@ -73,7 +73,7 @@ class SolanaTracker:
                 try:
                     pubkey = Pubkey.from_string(address)
                     await self.ws_connection.logs_subscribe(
-                        mentions=[pubkey],
+                        filter_=LogsFilter.Mentions([pubkey]),
                         commitment=Commitment("confirmed")
                     )
                     logger.info(f"Subscribed to logs for {address}")
