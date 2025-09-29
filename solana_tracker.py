@@ -165,8 +165,10 @@ class SolanaTracker:
     async def get_transaction_details(self, signature: str) -> Dict:
         """Get transaction details by signature"""
         try:
+            # Convert string signature to Signature object
+            sig_obj = Signature.from_string(signature)
             response = await self.client.get_transaction(
-                signature,
+                sig_obj,
                 encoding="jsonParsed",
                 max_supported_transaction_version=0
             )
