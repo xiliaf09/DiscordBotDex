@@ -7,7 +7,7 @@ from typing import Dict, List, Callable, Optional
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.websocket_api import connect
 from solana.rpc.commitment import Commitment
-from solana.rpc.types import TxOpts, LogsFilter
+from solana.rpc.types import TxOpts
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 import config
@@ -72,11 +72,13 @@ class SolanaTracker:
             for address in self.tracked_addresses:
                 try:
                     pubkey = Pubkey.from_string(address)
-                    await self.ws_connection.logs_subscribe(
-                        filter_=LogsFilter.Mentions([pubkey]),
-                        commitment=Commitment("confirmed")
+                    # Use account subscription instead of logs subscription
+                    await self.ws_connection.account_subscribe(
+                        pubkey,
+                        commitment=Commitment("confirmed"),
+                        encoding="jsonParsed"
                     )
-                    logger.info(f"Subscribed to logs for {address}")
+                    logger.info(f"Subscribed to account changes for {address}")
                 except Exception as e:
                     logger.error(f"Error subscribing to {address}: {e}")
             
@@ -103,26 +105,36 @@ class SolanaTracker:
             logger.debug(f"Received WebSocket message: {type(message)}")
             
             if hasattr(message, 'value') and message.value:
-                # This is a log notification
-                log_data = message.value
-                signature = str(log_data.signature)
-                mentions = [str(pk) for pk in log_data.mentions] if log_data.mentions else []
+                # This is an account change notification
+                account_data = message.value
+                address = str(account_data.account)
                 
-                logger.debug(f"Log signature: {signature}")
-                logger.debug(f"Log mentions: {mentions}")
+                logger.debug(f"Account change for: {address}")
                 logger.debug(f"Tracked addresses: {list(self.tracked_addresses)}")
                 
-                # Check if any tracked address is mentioned in the logs
-                for tracked_address in self.tracked_addresses:
-                    if tracked_address in mentions:
-                        logger.info(f"Transaction detected for {tracked_address}: {signature}")
-                        await self.process_transaction_log(tracked_address, signature, log_data)
-                        break  # Only process once per transaction
-                    else:
-                        logger.debug(f"Address {tracked_address} not in mentions")
+                # Check if this is a tracked address
+                if address in self.tracked_addresses:
+                    logger.info(f"Account change detected for tracked address: {address}")
+                    await self.process_account_change(address, account_data)
+                else:
+                    logger.debug(f"Address {address} not in tracked addresses")
                     
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
+    
+    async def process_account_change(self, address: str, account_data):
+        """Process account change and get recent transactions"""
+        try:
+            logger.info(f"Processing account change for {address}")
+            
+            # Get recent transactions for this address
+            recent_txs = await self.get_recent_transactions(address, limit=5)
+            
+            for tx in recent_txs:
+                await self.process_transaction(address, tx)
+                
+        except Exception as e:
+            logger.error(f"Error processing account change for {address}: {e}")
     
     async def process_transaction_log(self, address: str, signature: str, log_data):
         """Process transaction log and get transaction details"""
