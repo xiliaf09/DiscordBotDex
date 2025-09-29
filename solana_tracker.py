@@ -181,7 +181,7 @@ class SolanaTracker:
         """Get recent transactions for an address"""
         try:
             # Check if client is closed and reconnect if needed
-            if self.client is None or self.client._session is None:
+            if self.client is None:
                 logger.info("Reconnecting to Solana RPC...")
                 self.client = AsyncClient(self.rpc_url)
             
@@ -207,7 +207,7 @@ class SolanaTracker:
         except Exception as e:
             logger.error(f"Error getting recent transactions for {address}: {e}")
             # Try to reconnect on next attempt
-            if "client has been closed" in str(e):
+            if "client has been closed" in str(e) or "object has no attribute" in str(e):
                 self.client = None
             return []
     
