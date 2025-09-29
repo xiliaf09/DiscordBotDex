@@ -46,7 +46,7 @@ class SolanaTracker:
         try:
             addresses = self.db.get_tracked_addresses()
             self.tracked_addresses = {addr['address'] for addr in addresses}
-            logger.info(f"Loaded {len(self.tracked_addresses)} tracked addresses")
+            logger.info(f"Loaded {len(self.tracked_addresses)} tracked addresses: {list(self.tracked_addresses)}")
         except Exception as e:
             logger.error(f"Error loading tracked addresses: {e}")
     
@@ -61,8 +61,12 @@ class SolanaTracker:
             return
         
         try:
+            logger.info(f"Starting Solana tracking for {len(self.tracked_addresses)} addresses...")
+            logger.info(f"WebSocket URL: {self.ws_url}")
+            
             # Create WebSocket connection
             self.ws_connection = await connect(self.ws_url)
+            logger.info("Connected to Solana WebSocket")
             
             # Subscribe to logs for each tracked address
             for address in self.tracked_addresses:
@@ -77,7 +81,7 @@ class SolanaTracker:
                     logger.error(f"Error subscribing to {address}: {e}")
             
             self.is_running = True
-            logger.info("Started tracking addresses")
+            logger.info(f"Started tracking {len(self.tracked_addresses)} addresses")
             
             # Listen for messages
             async for message in self.ws_connection:
@@ -91,15 +95,22 @@ class SolanaTracker:
         finally:
             if self.ws_connection:
                 await self.ws_connection.close()
+                logger.info("Solana WebSocket connection closed")
     
     async def handle_websocket_message(self, message):
         """Handle incoming WebSocket messages"""
         try:
+            logger.debug(f"Received WebSocket message: {type(message)}")
+            
             if hasattr(message, 'value') and message.value:
                 # This is a log notification
                 log_data = message.value
                 signature = str(log_data.signature)
                 mentions = [str(pk) for pk in log_data.mentions] if log_data.mentions else []
+                
+                logger.debug(f"Log signature: {signature}")
+                logger.debug(f"Log mentions: {mentions}")
+                logger.debug(f"Tracked addresses: {list(self.tracked_addresses)}")
                 
                 # Check if any tracked address is mentioned in the logs
                 for tracked_address in self.tracked_addresses:
@@ -107,6 +118,8 @@ class SolanaTracker:
                         logger.info(f"Transaction detected for {tracked_address}: {signature}")
                         await self.process_transaction_log(tracked_address, signature, log_data)
                         break  # Only process once per transaction
+                    else:
+                        logger.debug(f"Address {tracked_address} not in mentions")
                     
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
@@ -303,8 +316,13 @@ class SolanaTracker:
                 
                 # Restart tracking to include new address
                 if self.is_running:
+                    logger.info("Stopping current tracking to restart with new address")
                     await self.stop_tracking()
-                    await asyncio.sleep(1)  # Give it a moment to stop
+                    await asyncio.sleep(2)  # Give it a moment to stop
+                    logger.info("Restarting tracking with new address")
+                    await self.start_tracking()
+                else:
+                    logger.info("Starting tracking for new address")
                     await self.start_tracking()
                 
                 return True

@@ -5525,6 +5525,7 @@ class Bot(commands.Bot):
         
         # Initialize Solana tracker
         try:
+            logger.info("Initializing Solana tracker...")
             await self.solana_tracker.initialize()
             
             # Add notification callback for Discord
@@ -5533,9 +5534,13 @@ class Bot(commands.Bot):
             
             self.solana_tracker.add_notification_callback(solana_notification_callback)
             
-            # Start Solana tracking
-            asyncio.create_task(self.solana_tracker.start_tracking())
-            logger.info("Solana tracker initialized and started")
+            # Start Solana tracking if there are addresses to track
+            if self.solana_tracker.tracked_addresses:
+                logger.info("Starting Solana tracking task...")
+                asyncio.create_task(self.solana_tracker.start_tracking())
+                logger.info("Solana tracker initialized and started")
+            else:
+                logger.info("No Solana addresses to track, waiting for addresses to be added")
             
         except Exception as e:
             logger.error(f"Error initializing Solana tracker: {e}")
