@@ -49,4 +49,8 @@ PUSHOVER_USER_KEY_2 = os.getenv('PUSHOVER_USER_KEY_2')
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
-YOUR_PHONE_NUMBER = os.getenv('YOUR_PHONE_NUMBER') 
+YOUR_PHONE_NUMBER = os.getenv('YOUR_PHONE_NUMBER')
+
+# Solana Configuration
+SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL')  # QuickNode Solana RPC URL
+SOLANA_WS_URL = os.getenv('SOLANA_WS_URL')    # QuickNode Solana WebSocket URL 
