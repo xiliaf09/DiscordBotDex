@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 class SolanaCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.solana_tracker = SolanaTracker()
+        # Use the bot's SolanaTracker instance
+        self.solana_tracker = bot.solana_tracker
     
     @commands.command(name='soladd')
     @commands.has_permissions(administrator=True)

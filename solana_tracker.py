@@ -64,16 +64,15 @@ class SolanaTracker:
             # Create WebSocket connection
             self.ws_connection = await connect(self.ws_url)
             
-            # Subscribe to account changes for each tracked address
+            # Subscribe to logs for each tracked address
             for address in self.tracked_addresses:
                 try:
                     pubkey = Pubkey.from_string(address)
-                    await self.ws_connection.account_subscribe(
-                        pubkey,
-                        commitment=Commitment("confirmed"),
-                        encoding="jsonParsed"
+                    await self.ws_connection.logs_subscribe(
+                        mentions=[pubkey],
+                        commitment=Commitment("confirmed")
                     )
-                    logger.info(f"Subscribed to account changes for {address}")
+                    logger.info(f"Subscribed to logs for {address}")
                 except Exception as e:
                     logger.error(f"Error subscribing to {address}: {e}")
             
@@ -97,27 +96,44 @@ class SolanaTracker:
         """Handle incoming WebSocket messages"""
         try:
             if hasattr(message, 'value') and message.value:
-                # This is an account change notification
-                account_data = message.value
-                address = str(account_data.account)
+                # This is a log notification
+                log_data = message.value
+                signature = str(log_data.signature)
+                mentions = [str(pk) for pk in log_data.mentions] if log_data.mentions else []
                 
-                if address in self.tracked_addresses:
-                    await self.process_account_change(address, account_data)
+                # Check if any tracked address is mentioned in the logs
+                for tracked_address in self.tracked_addresses:
+                    if tracked_address in mentions:
+                        logger.info(f"Transaction detected for {tracked_address}: {signature}")
+                        await self.process_transaction_log(tracked_address, signature, log_data)
+                        break  # Only process once per transaction
                     
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
     
-    async def process_account_change(self, address: str, account_data):
-        """Process account change and get recent transactions"""
+    async def process_transaction_log(self, address: str, signature: str, log_data):
+        """Process transaction log and get transaction details"""
         try:
-            # Get recent transactions for this address
-            recent_txs = await self.get_recent_transactions(address)
-            
-            for tx in recent_txs:
-                await self.process_transaction(address, tx)
+            # Get transaction details
+            transaction = await self.get_transaction_details(signature)
+            if transaction:
+                await self.process_transaction(address, transaction)
                 
         except Exception as e:
-            logger.error(f"Error processing account change for {address}: {e}")
+            logger.error(f"Error processing transaction log for {address}: {e}")
+    
+    async def get_transaction_details(self, signature: str) -> Dict:
+        """Get transaction details by signature"""
+        try:
+            response = await self.client.get_transaction(
+                signature,
+                encoding="jsonParsed",
+                max_supported_transaction_version=0
+            )
+            return response.value if response.value else None
+        except Exception as e:
+            logger.error(f"Error getting transaction details for {signature}: {e}")
+            return None
     
     async def get_recent_transactions(self, address: str, limit: int = 10) -> List[Dict]:
         """Get recent transactions for an address"""
@@ -284,6 +300,13 @@ class SolanaTracker:
             if success:
                 self.tracked_addresses.add(address)
                 logger.info(f"Added address to tracking: {address}")
+                
+                # Restart tracking to include new address
+                if self.is_running:
+                    await self.stop_tracking()
+                    await asyncio.sleep(1)  # Give it a moment to stop
+                    await self.start_tracking()
+                
                 return True
             return False
             
@@ -298,6 +321,13 @@ class SolanaTracker:
             if success:
                 self.tracked_addresses.discard(address)
                 logger.info(f"Removed address from tracking: {address}")
+                
+                # Restart tracking to exclude removed address
+                if self.is_running:
+                    await self.stop_tracking()
+                    await asyncio.sleep(1)  # Give it a moment to stop
+                    await self.start_tracking()
+                
                 return True
             return False
             
