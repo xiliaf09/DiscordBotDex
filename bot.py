@@ -1197,6 +1197,30 @@ async def make_emergency_call(token_name: str, token_symbol: str, volume_24h: fl
     except Exception as e:
         logger.error(f"[TWILIO ERROR] Failed to make emergency call: {e}")
 
+async def make_solana_emergency_call(address: str, tx_type: str, amount: str = None):
+    """Make an emergency phone call for Solana tracked address alerts"""
+    if not twilio_client or not config.TWILIO_PHONE_NUMBER or not config.YOUR_PHONE_NUMBER:
+        logger.warning("Twilio not configured - skipping Solana emergency call")
+        return
+    
+    try:
+        # Create a message for the call
+        if amount:
+            message = f"Solana alert! Tracked address {address[:8]}... has performed a {tx_type} transaction for {amount}. This is an alert from your Solana tracker bot."
+        else:
+            message = f"Solana alert! Tracked address {address[:8]}... has performed a {tx_type} transaction. This is an alert from your Solana tracker bot."
+        
+        # Make the call
+        call = twilio_client.calls.create(
+            twiml=f'<Response><Say voice="alice">{message}</Say></Response>',
+            to=config.YOUR_PHONE_NUMBER,
+            from_=config.TWILIO_PHONE_NUMBER
+        )
+        
+        logger.info(f"[TWILIO] Solana emergency call initiated for address {address[:8]}... - Call SID: {call.sid}")
+    except Exception as e:
+        logger.error(f"[TWILIO ERROR] Failed to make Solana emergency call: {e}")
+
 class TokenMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -5617,6 +5641,42 @@ class Bot(commands.Bot):
             
             await channel.send(embed=embed)
             logger.info(f"Solana notification sent for {address} - {tx_type}")
+            
+            # Make emergency phone call if enabled and conditions are met
+            # Check if SolanaCog is available and get settings from it
+            solana_cog = None
+            for cog in self.cogs.values():
+                if hasattr(cog, 'solana_call_enabled'):
+                    solana_cog = cog
+                    break
+            
+            # Use SolanaCog settings if available, otherwise fallback to config
+            call_enabled = solana_cog.solana_call_enabled if solana_cog else config.SOLANA_CALL_ENABLED
+            min_amount = solana_cog.solana_call_min_amount if solana_cog else config.SOLANA_CALL_MIN_AMOUNT
+            
+            if call_enabled:
+                try:
+                    # Check if amount meets minimum threshold for phone call
+                    should_call = True
+                    if min_amount > 0 and amount:
+                        # Try to extract numeric value from amount string
+                        try:
+                            # Handle different amount formats (e.g., "1.5 SOL", "1000 USDC")
+                            amount_str = str(amount).replace(',', '').upper()
+                            numeric_amount = float(''.join(filter(lambda x: x.isdigit() or x == '.', amount_str)))
+                            should_call = numeric_amount >= min_amount
+                        except (ValueError, TypeError):
+                            # If we can't parse the amount, default to calling for all transactions
+                            should_call = True
+                    
+                    if should_call:
+                        await make_solana_emergency_call(address, tx_type, amount)
+                        logger.info(f"[SOLANA TWILIO] Emergency call triggered for {address} - {tx_type} - Amount: {amount}")
+                    else:
+                        logger.info(f"[SOLANA TWILIO] Call not triggered - amount {amount} below threshold {min_amount}")
+                        
+                except Exception as e:
+                    logger.error(f"[SOLANA TWILIO ERROR] Failed to process phone call logic: {e}")
             
         except Exception as e:
             logger.error(f"Error sending Solana notification: {e}")

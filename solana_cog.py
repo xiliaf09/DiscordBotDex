@@ -12,6 +12,9 @@ class SolanaCog(commands.Cog):
         self.bot = bot
         # Use the bot's SolanaTracker instance
         self.solana_tracker = bot.solana_tracker
+        # Solana Twilio settings (in-memory storage)
+        self.solana_call_enabled = config.SOLANA_CALL_ENABLED
+        self.solana_call_min_amount = config.SOLANA_CALL_MIN_AMOUNT
     
     @commands.command(name='soladd')
     @commands.has_permissions(administrator=True)
@@ -311,6 +314,206 @@ class SolanaCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error testing Solana connection: {e}")
             await ctx.send(f"❌ Erreur lors du test de connexion: {str(e)}")
+    
+    @commands.command(name='solcallon')
+    @commands.has_permissions(administrator=True)
+    async def solana_call_enable(self, ctx):
+        """Active les appels téléphoniques Twilio pour les alertes Solana
+        
+        Usage: !solcallon
+        """
+        try:
+            self.solana_call_enabled = True
+            
+            embed = discord.Embed(
+                title="✅ Appels Solana Activés",
+                description="Les appels téléphoniques Twilio sont maintenant **activés** pour les alertes Solana.",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(name="Statut", value="🟢 Activé", inline=True)
+            embed.add_field(name="Seuil minimum", value=f"{self.solana_call_min_amount}", inline=True)
+            embed.add_field(name="Configuré par", value=ctx.author.mention, inline=True)
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Solana Twilio calls enabled by {ctx.author}")
+            
+        except Exception as e:
+            logger.error(f"Error enabling Solana calls: {e}")
+            await ctx.send(f"❌ Erreur lors de l'activation: {str(e)}")
+    
+    @commands.command(name='solcalloff')
+    @commands.has_permissions(administrator=True)
+    async def solana_call_disable(self, ctx):
+        """Désactive les appels téléphoniques Twilio pour les alertes Solana
+        
+        Usage: !solcalloff
+        """
+        try:
+            self.solana_call_enabled = False
+            
+            embed = discord.Embed(
+                title="❌ Appels Solana Désactivés",
+                description="Les appels téléphoniques Twilio sont maintenant **désactivés** pour les alertes Solana.",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(name="Statut", value="🔴 Désactivé", inline=True)
+            embed.add_field(name="Seuil minimum", value=f"{self.solana_call_min_amount}", inline=True)
+            embed.add_field(name="Configuré par", value=ctx.author.mention, inline=True)
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Solana Twilio calls disabled by {ctx.author}")
+            
+        except Exception as e:
+            logger.error(f"Error disabling Solana calls: {e}")
+            await ctx.send(f"❌ Erreur lors de la désactivation: {str(e)}")
+    
+    @commands.command(name='solcallset')
+    @commands.has_permissions(administrator=True)
+    async def solana_call_set_threshold(self, ctx, min_amount: float):
+        """Définit le seuil minimum pour déclencher les appels téléphoniques Solana
+        
+        Usage: !solcallset <montant>
+        Exemples: 
+        - !solcallset 0 (appeler pour tous les mouvements)
+        - !solcallset 1.5 (appeler pour mouvements ≥ 1.5 SOL/tokens)
+        - !solcallset 100 (appeler pour mouvements ≥ 100 tokens)
+        """
+        try:
+            if min_amount < 0:
+                await ctx.send("❌ Le montant minimum ne peut pas être négatif.")
+                return
+            
+            self.solana_call_min_amount = min_amount
+            
+            embed = discord.Embed(
+                title="⚙️ Seuil des Appels Solana Configuré",
+                description=f"Le seuil minimum pour déclencher les appels téléphoniques Solana a été défini à **{min_amount}**.",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            if min_amount == 0:
+                embed.add_field(name="Comportement", value="📞 Appels pour **tous** les mouvements", inline=False)
+            else:
+                embed.add_field(name="Comportement", value=f"📞 Appels pour mouvements ≥ **{min_amount}**", inline=False)
+            
+            embed.add_field(name="Statut actuel", value="🟢 Activé" if self.solana_call_enabled else "🔴 Désactivé", inline=True)
+            embed.add_field(name="Configuré par", value=ctx.author.mention, inline=True)
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Solana call threshold set to {min_amount} by {ctx.author}")
+            
+        except ValueError:
+            await ctx.send("❌ Montant invalide. Utilisez un nombre valide (ex: 1.5, 100, 0).")
+        except Exception as e:
+            logger.error(f"Error setting Solana call threshold: {e}")
+            await ctx.send(f"❌ Erreur lors de la configuration: {str(e)}")
+    
+    @commands.command(name='solcallstatus')
+    async def solana_call_status(self, ctx):
+        """Affiche le statut actuel des appels téléphoniques Solana
+        
+        Usage: !solcallstatus
+        """
+        try:
+            embed = discord.Embed(
+                title="📞 Statut des Appels Solana",
+                color=discord.Color.green() if self.solana_call_enabled else discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Statut principal
+            status_emoji = "🟢" if self.solana_call_enabled else "🔴"
+            status_text = "Activé" if self.solana_call_enabled else "Désactivé"
+            embed.add_field(name="Statut", value=f"{status_emoji} {status_text}", inline=True)
+            
+            # Seuil minimum
+            if self.solana_call_min_amount == 0:
+                threshold_text = "Tous les mouvements"
+            else:
+                threshold_text = f"≥ {self.solana_call_min_amount}"
+            embed.add_field(name="Seuil minimum", value=threshold_text, inline=True)
+            
+            # Configuration Twilio
+            twilio_configured = bool(config.TWILIO_ACCOUNT_SID and config.TWILIO_AUTH_TOKEN and 
+                                   config.TWILIO_PHONE_NUMBER and config.YOUR_PHONE_NUMBER)
+            twilio_status = "✅ Configuré" if twilio_configured else "❌ Non configuré"
+            embed.add_field(name="Configuration Twilio", value=twilio_status, inline=True)
+            
+            # Informations supplémentaires
+            if self.solana_call_enabled:
+                embed.description = "📱 Les appels téléphoniques sont activés pour les alertes Solana."
+            else:
+                embed.description = "📱 Les appels téléphoniques sont désactivés pour les alertes Solana."
+            
+            if not twilio_configured:
+                embed.add_field(
+                    name="⚠️ Attention",
+                    value="Configuration Twilio manquante. Vérifiez les variables d'environnement.",
+                    inline=False
+                )
+            
+            embed.set_footer(text="Utilisez !solcallon, !solcalloff ou !solcallset pour modifier les paramètres")
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error getting Solana call status: {e}")
+            await ctx.send(f"❌ Erreur lors de l'affichage du statut: {str(e)}")
+    
+    @commands.command(name='solcalltest')
+    @commands.has_permissions(administrator=True)
+    async def solana_call_test(self, ctx):
+        """Teste un appel téléphonique Solana
+        
+        Usage: !solcalltest
+        """
+        try:
+            if not self.solana_call_enabled:
+                await ctx.send("❌ Les appels Solana sont désactivés. Utilisez `!solcallon` pour les activer.")
+                return
+            
+            # Vérifier la configuration Twilio
+            if not (config.TWILIO_ACCOUNT_SID and config.TWILIO_AUTH_TOKEN and 
+                   config.TWILIO_PHONE_NUMBER and config.YOUR_PHONE_NUMBER):
+                await ctx.send("❌ Configuration Twilio manquante. Vérifiez les variables d'environnement.")
+                return
+            
+            # Importer la fonction depuis bot.py
+            from bot import make_solana_emergency_call
+            
+            embed = discord.Embed(
+                title="🧪 Test d'Appel Solana",
+                description="Envoi d'un appel téléphonique de test...",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            status_msg = await ctx.send(embed=embed)
+            
+            # Faire l'appel de test
+            test_address = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+            test_tx_type = "test_transaction"
+            test_amount = "1.0 SOL"
+            
+            await make_solana_emergency_call(test_address, test_tx_type, test_amount)
+            
+            # Mettre à jour le message
+            embed.title = "✅ Test d'Appel Solana Réussi"
+            embed.description = "L'appel téléphonique de test a été envoyé avec succès !"
+            embed.color = discord.Color.green()
+            embed.add_field(name="Adresse test", value=f"`{test_address[:8]}...`", inline=True)
+            embed.add_field(name="Type", value=test_tx_type, inline=True)
+            embed.add_field(name="Montant", value=test_amount, inline=True)
+            
+            await status_msg.edit(embed=embed)
+            logger.info(f"Solana call test performed by {ctx.author}")
+            
+        except Exception as e:
+            logger.error(f"Error testing Solana call: {e}")
+            await ctx.send(f"❌ Erreur lors du test d'appel: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(SolanaCog(bot))

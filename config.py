@@ -53,4 +53,8 @@ YOUR_PHONE_NUMBER = os.getenv('YOUR_PHONE_NUMBER')
 
 # Solana Configuration
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL')  # QuickNode Solana RPC URL
-SOLANA_WS_URL = os.getenv('SOLANA_WS_URL')    # QuickNode Solana WebSocket URL 
+SOLANA_WS_URL = os.getenv('SOLANA_WS_URL')    # QuickNode Solana WebSocket URL
+
+# Solana Twilio Configuration (for phone calls on tracked address alerts)
+SOLANA_CALL_ENABLED = os.getenv('SOLANA_CALL_ENABLED', 'true').lower() == 'true'  # Enable/disable Solana phone calls
+SOLANA_CALL_MIN_AMOUNT = float(os.getenv('SOLANA_CALL_MIN_AMOUNT', '0'))  # Minimum amount to trigger phone call (in SOL or token amount) 

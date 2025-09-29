@@ -28,6 +28,19 @@ Un bot Discord qui surveille les nouveaux tokens sur la blockchain Base et les m
 ### Commandes Solana
 - `!solanaon` - Active le monitoring pour Solana
 - `!solanaoff` - Désactive le monitoring pour Solana
+- `!soladd <address> [nickname]` - Ajoute une adresse Solana au tracking
+- `!solremove <address>` - Retire une adresse Solana du tracking
+- `!sollist` - Affiche la liste des adresses Solana trackées
+- `!solactivity [address] [limit]` - Affiche l'activité récente des adresses
+- `!solsettings <address> <min_amount> <types>` - Configure les paramètres de notification
+- `!soltest` - Teste la connexion aux endpoints Solana
+
+### Commandes Appels Twilio Solana
+- `!solcallon` - Active les appels téléphoniques pour les alertes Solana
+- `!solcalloff` - Désactive les appels téléphoniques pour les alertes Solana
+- `!solcallset <montant>` - Définit le seuil minimum pour déclencher les appels
+- `!solcallstatus` - Affiche le statut des appels téléphoniques Solana
+- `!solcalltest` - Teste un appel téléphonique Solana
 
 ### Commandes Trump
 - `!lasttrump` - Affiche le dernier post de Trump sur Truth Social
@@ -101,6 +114,8 @@ Le bot utilise les variables d'environnement suivantes :
 - `TWILIO_AUTH_TOKEN` : Auth Token Twilio (pour les appels d'urgence)
 - `TWILIO_PHONE_NUMBER` : Numéro de téléphone Twilio (pour les appels d'urgence)
 - `YOUR_PHONE_NUMBER` : Votre numéro de téléphone personnel (pour recevoir les appels)
+- `SOLANA_CALL_ENABLED` : Activer/désactiver les appels pour les alertes Solana (true/false, par défaut: true)
+- `SOLANA_CALL_MIN_AMOUNT` : Montant minimum pour déclencher un appel Solana (par défaut: 0 = tous les mouvements)
 
 ### Configuration Pushover (Alertes Critiques)
 
@@ -118,6 +133,21 @@ Les alertes volume utiliseront :
 - **Notification unique** (pas de répétition)
 - **Envoi multiple** : Si vous configurez un deuxième utilisateur, les alertes seront envoyées aux deux
 - **Appel téléphonique** : Pour les volumes > 50k USD, un appel vocal sera effectué
+
+### Configuration Solana Twilio (Appels d'Urgence Solana)
+
+Pour recevoir des appels téléphoniques automatiques sur les mouvements d'adresses Solana trackées :
+
+1. **Activation** : Définissez `SOLANA_CALL_ENABLED=true` dans votre fichier `.env`
+2. **Seuil minimum** : Définissez `SOLANA_CALL_MIN_AMOUNT` pour filtrer les petits montants
+   - `0` = appeler pour tous les mouvements (par défaut)
+   - `1.5` = appeler seulement pour les mouvements ≥ 1.5 SOL/tokens
+   - `100` = appeler seulement pour les mouvements ≥ 100 tokens
+
+Les appels Solana utiliseront :
+- **Message personnalisé** avec l'adresse trackée et le type de transaction
+- **Filtrage par montant** pour éviter les appels sur les micro-transactions
+- **Même numéro Twilio** que les alertes volume (configuration partagée)
 
 ### Configuration Twilio (Appels d'Urgence)
 
