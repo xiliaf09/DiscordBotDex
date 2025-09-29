@@ -30,8 +30,9 @@ class SolanaTracker:
         """Initialize the Solana client and WebSocket connection"""
         try:
             self.client = AsyncClient(self.rpc_url)
-            await self.client.get_health()
-            logger.info("Solana RPC client initialized successfully")
+            # Test connection with get_version instead of get_health
+            version = await self.client.get_version()
+            logger.info(f"Solana RPC client initialized successfully - Version: {version.value}")
             
             # Load tracked addresses from database
             await self.load_tracked_addresses()
