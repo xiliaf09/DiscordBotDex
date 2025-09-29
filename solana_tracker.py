@@ -72,13 +72,11 @@ class SolanaTracker:
             for address in self.tracked_addresses:
                 try:
                     pubkey = Pubkey.from_string(address)
-                    # Use account subscription instead of logs subscription
-                    await self.ws_connection.account_subscribe(
-                        pubkey,
-                        commitment=Commitment("confirmed"),
-                        encoding="jsonParsed"
+                    # Use logs subscription with all filter to catch all logs
+                    await self.ws_connection.logs_subscribe(
+                        commitment=Commitment("confirmed")
                     )
-                    logger.info(f"Subscribed to account changes for {address}")
+                    logger.info(f"Subscribed to all logs for {address}")
                 except Exception as e:
                     logger.error(f"Error subscribing to {address}: {e}")
             
@@ -105,19 +103,25 @@ class SolanaTracker:
             logger.debug(f"Received WebSocket message: {type(message)}")
             
             if hasattr(message, 'value') and message.value:
-                # This is an account change notification
-                account_data = message.value
-                address = str(account_data.account)
+                # This is a log notification
+                log_data = message.value
+                signature = str(log_data.signature)
+                logs = log_data.logs if hasattr(log_data, 'logs') else []
                 
-                logger.debug(f"Account change for: {address}")
+                logger.debug(f"Log signature: {signature}")
+                logger.debug(f"Logs: {logs}")
                 logger.debug(f"Tracked addresses: {list(self.tracked_addresses)}")
                 
-                # Check if this is a tracked address
-                if address in self.tracked_addresses:
-                    logger.info(f"Account change detected for tracked address: {address}")
-                    await self.process_account_change(address, account_data)
-                else:
-                    logger.debug(f"Address {address} not in tracked addresses")
+                # Check if any tracked address is mentioned in the logs
+                for tracked_address in self.tracked_addresses:
+                    # Check if the tracked address appears in any of the log messages
+                    for log in logs:
+                        if tracked_address in log:
+                            logger.info(f"Transaction detected for {tracked_address}: {signature}")
+                            await self.process_transaction_log(tracked_address, signature, log_data)
+                            return  # Only process once per transaction
+                
+                logger.debug(f"No tracked addresses found in logs")
                     
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
