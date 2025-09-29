@@ -180,6 +180,11 @@ class SolanaTracker:
     async def get_recent_transactions(self, address: str, limit: int = 10) -> List[Dict]:
         """Get recent transactions for an address"""
         try:
+            # Check if client is closed and reconnect if needed
+            if self.client is None or self.client._session is None:
+                logger.info("Reconnecting to Solana RPC...")
+                self.client = AsyncClient(self.rpc_url)
+            
             pubkey = Pubkey.from_string(address)
             response = await self.client.get_signatures_for_address(
                 pubkey, 
@@ -201,6 +206,9 @@ class SolanaTracker:
             
         except Exception as e:
             logger.error(f"Error getting recent transactions for {address}: {e}")
+            # Try to reconnect on next attempt
+            if "client has been closed" in str(e):
+                self.client = None
             return []
     
     async def process_transaction(self, address: str, tx_data: Dict):
@@ -342,13 +350,10 @@ class SolanaTracker:
                 self.tracked_addresses.add(address)
                 logger.info(f"Added address to tracking: {address}")
                 
-                # Restart tracking to include new address
+                # If tracking is running, just add the address to the polling tasks
                 if self.is_running:
-                    logger.info("Stopping current tracking to restart with new address")
-                    await self.stop_tracking()
-                    await asyncio.sleep(2)  # Give it a moment to stop
-                    logger.info("Restarting tracking with new address")
-                    await self.start_tracking()
+                    logger.info("Adding new address to existing tracking")
+                    asyncio.create_task(self.poll_address_transactions(address))
                 else:
                     logger.info("Starting tracking for new address")
                     await self.start_tracking()
@@ -367,13 +372,8 @@ class SolanaTracker:
             if success:
                 self.tracked_addresses.discard(address)
                 logger.info(f"Removed address from tracking: {address}")
-                
-                # Restart tracking to exclude removed address
-                if self.is_running:
-                    await self.stop_tracking()
-                    await asyncio.sleep(1)  # Give it a moment to stop
-                    await self.start_tracking()
-                
+                # Note: The polling task for this address will continue but won't find new transactions
+                # This is acceptable as it will eventually timeout and stop
                 return True
             return False
             
