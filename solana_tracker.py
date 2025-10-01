@@ -25,6 +25,8 @@ class SolanaTracker:
         self.tracked_addresses = set()
         self.notification_callbacks = []
         self.is_running = False
+        # Track polling tasks for each address
+        self.polling_tasks = {}  # address -> task
         
     async def initialize(self):
         """Initialize the Solana client and WebSocket connection"""
@@ -66,7 +68,10 @@ class SolanaTracker:
             
             # Start polling task for each address
             for address in self.tracked_addresses:
-                asyncio.create_task(self.poll_address_transactions(address))
+                if address not in self.polling_tasks:
+                    task = asyncio.create_task(self.poll_address_transactions(address))
+                    self.polling_tasks[address] = task
+                    logger.info(f"Started polling task for address: {address}")
             
             logger.info(f"Started tracking {len(self.tracked_addresses)} addresses")
             
@@ -83,6 +88,11 @@ class SolanaTracker:
         
         while self.is_running:
             try:
+                # Check if address is still being tracked
+                if address not in self.tracked_addresses:
+                    logger.info(f"Address {address} no longer tracked, stopping polling")
+                    break
+                
                 # Get recent transactions
                 recent_txs = await self.get_recent_transactions(address, limit=5)
                 
@@ -104,6 +114,9 @@ class SolanaTracker:
                 # Poll every 5 seconds
                 await asyncio.sleep(5)
                 
+            except asyncio.CancelledError:
+                logger.info(f"Polling task for {address} was cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error polling address {address}: {e}")
                 await asyncio.sleep(10)  # Wait longer on error
@@ -353,7 +366,10 @@ class SolanaTracker:
                 # If tracking is running, just add the address to the polling tasks
                 if self.is_running:
                     logger.info("Adding new address to existing tracking")
-                    asyncio.create_task(self.poll_address_transactions(address))
+                    if address not in self.polling_tasks:
+                        task = asyncio.create_task(self.poll_address_transactions(address))
+                        self.polling_tasks[address] = task
+                        logger.info(f"Started polling task for new address: {address}")
                 else:
                     logger.info("Starting tracking for new address")
                     await self.start_tracking()
@@ -370,10 +386,22 @@ class SolanaTracker:
         try:
             success = self.db.remove_tracked_address(address)
             if success:
+                # Remove from tracked addresses set
                 self.tracked_addresses.discard(address)
+                
+                # Stop the polling task for this address
+                if address in self.polling_tasks:
+                    task = self.polling_tasks[address]
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                    del self.polling_tasks[address]
+                    logger.info(f"Stopped polling task for address: {address}")
+                
                 logger.info(f"Removed address from tracking: {address}")
-                # Note: The polling task for this address will continue but won't find new transactions
-                # This is acceptable as it will eventually timeout and stop
                 return True
             return False
             
@@ -385,6 +413,19 @@ class SolanaTracker:
         """Stop tracking and close connections"""
         try:
             self.is_running = False
+            
+            # Cancel all polling tasks
+            for address, task in self.polling_tasks.items():
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    logger.info(f"Cancelled polling task for address: {address}")
+            
+            self.polling_tasks.clear()
+            
             if self.ws_connection:
                 await self.ws_connection.close()
             if self.client:
