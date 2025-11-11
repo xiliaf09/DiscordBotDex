@@ -3,7 +3,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 import time
 import sys
 
@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import httpx
 import feedparser
 from web3 import Web3
+from web3.datastructures import AttributeDict
 from eth_account import Account
 import aiohttp
 import sqlite3
@@ -46,8 +47,11 @@ CLANKER_API_URL = "https://www.clanker.world/api"
 BASESCAN_API_URL = "https://api.basescan.org/api"
 WARPCAST_API_URL = "https://client.warpcast.com/v2"
 ROUTER_ADDRESS = "0x327df1e6de05895d2ab08513aadd9313fe505d86"
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 CLANKER_FACTORY_ADDRESS = "0x2A787b2362021cC3eEa3C24C4748a6cD5B687382"
 CLANKER_FACTORY_V4_ADDRESS = "0xE85A59c628F7d27878ACeB4bf3b35733630083a9"
+FEY_FACTORY_ADDRESS = "0x8eEF0dC80Adf57908Bb1Be0236C2A72A7E379c2D"
+FEY_HOOK_STATIC_FEE_ADDRESS = "0x5B409184204b86f708d3aeBb3cad3F02835f68cC"
 CLANKER_FACTORY_ABI = [
     {"inputs":[{"internalType":"address","name":"owner_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},
     {"inputs":[],"name":"Deprecated","type":"error"},
@@ -158,6 +162,31 @@ CLANKER_FACTORY_V4_ABI = [
     {"inputs":[],"name":"teamFeeRecipient","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
     {"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"tokenDeploymentInfo","outputs":[{"components":[{"internalType":"address","name":"token","type":"address"},{"internalType":"address","name":"hook","type":"address"},{"internalType":"address","name":"locker","type":"address"},{"internalType":"address[]","name":"extensions","type":"address[]"}],"internalType":"struct IClanker.DeploymentInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},
     {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"}
+]
+FEY_FACTORY_ABI = [
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": False, "internalType": "address", "name": "msgSender", "type": "address"},
+            {"indexed": True, "internalType": "address", "name": "tokenAddress", "type": "address"},
+            {"indexed": True, "internalType": "address", "name": "tokenAdmin", "type": "address"},
+            {"indexed": False, "internalType": "string", "name": "tokenImage", "type": "string"},
+            {"indexed": False, "internalType": "string", "name": "tokenName", "type": "string"},
+            {"indexed": False, "internalType": "string", "name": "tokenSymbol", "type": "string"},
+            {"indexed": False, "internalType": "string", "name": "tokenMetadata", "type": "string"},
+            {"indexed": False, "internalType": "string", "name": "tokenContext", "type": "string"},
+            {"indexed": False, "internalType": "int24", "name": "startingTick", "type": "int24"},
+            {"indexed": False, "internalType": "address", "name": "poolHook", "type": "address"},
+            {"indexed": False, "internalType": "bytes32", "name": "poolId", "type": "bytes32"},
+            {"indexed": False, "internalType": "address", "name": "pairedToken", "type": "address"},
+            {"indexed": False, "internalType": "address", "name": "locker", "type": "address"},
+            {"indexed": False, "internalType": "address", "name": "mevModule", "type": "address"},
+            {"indexed": False, "internalType": "uint256", "name": "extensionsSupply", "type": "uint256"},
+            {"indexed": False, "internalType": "address[]", "name": "extensions", "type": "address[]"}
+        ],
+        "name": "TokenCreated",
+        "type": "event"
+    }
 ]
 MONITORED_CHAINS = {
     "base": "Base",
@@ -1207,6 +1236,11 @@ class ClankerMonitor(commands.Cog):
         self.clanker_factory_v4 = self.w3_ws.eth.contract(
             address=Web3.to_checksum_address(CLANKER_FACTORY_V4_ADDRESS),
             abi=CLANKER_FACTORY_V4_ABI
+        )
+        # --- Fey launchpad factory ---
+        self.fey_factory = self.w3_ws.eth.contract(
+            address=Web3.to_checksum_address(FEY_FACTORY_ADDRESS),
+            abi=FEY_FACTORY_ABI
         )
         # ---
 
@@ -2758,6 +2792,296 @@ class ClankerMonitor(commands.Cog):
                 logger.error(f"Error creating V4 event filter: {e}")
                 await asyncio.sleep(5)  # Attendre avant de réessayer de créer le filtre
 
+    async def listen_fey_factory(self):
+        await self.bot.wait_until_ready()
+        if not self.channel:
+            self.channel = self.bot.get_channel(CHANNEL_ID)
+        channel = self.channel
+        if not channel:
+            logger.error("Could not find channel for Fey notifications")
+            return
+
+        while True:
+            try:
+                event_filter = self.fey_factory.events.TokenCreated.create_filter(fromBlock="latest")
+                logger.info("Started Fey factory event listener")
+
+                while True:
+                    try:
+                        for event in event_filter.get_new_entries():
+                            await self._handle_fey_token_created(event, channel)
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        if "filter not found" in str(e).lower():
+                            logger.warning("Fey factory filter expired, recreating...")
+                            break
+                        logger.error(f"Error in Fey factory event loop: {e}")
+                        await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Error creating Fey factory event filter: {e}")
+                await asyncio.sleep(5)
+
+    async def _handle_fey_token_created(self, event, channel: discord.TextChannel):
+        try:
+            args = event["args"]
+            token_address = Web3.to_checksum_address(args["tokenAddress"])
+            token_key = token_address.lower()
+            if token_key in self.seen_tokens:
+                logger.info(f"[FEY] Token {token_address} already processed, skipping duplicate event")
+                return
+
+            tx_hash = event["transactionHash"].hex()
+            msg_sender = Web3.to_checksum_address(args.get("msgSender", ZERO_ADDRESS))
+            token_admin_raw = args.get("tokenAdmin", ZERO_ADDRESS)
+            token_admin = (
+                Web3.to_checksum_address(token_admin_raw)
+                if token_admin_raw and token_admin_raw != ZERO_ADDRESS
+                else None
+            )
+            token_name = args.get("tokenName", "Inconnu")
+            token_symbol = args.get("tokenSymbol", "")
+            token_image = args.get("tokenImage") or None
+            token_metadata = args.get("tokenMetadata") or ""
+            token_context_raw = args.get("tokenContext") or ""
+            starting_tick = args.get("startingTick")
+            pool_hook_raw = args.get("poolHook", ZERO_ADDRESS)
+            pool_hook = (
+                Web3.to_checksum_address(pool_hook_raw)
+                if pool_hook_raw and pool_hook_raw != ZERO_ADDRESS
+                else None
+            )
+            pool_id_bytes = args.get("poolId")
+            pool_id = pool_id_bytes.hex() if pool_id_bytes else None
+            paired_token_raw = args.get("pairedToken", ZERO_ADDRESS)
+            paired_token = (
+                Web3.to_checksum_address(paired_token_raw)
+                if paired_token_raw and paired_token_raw != ZERO_ADDRESS
+                else None
+            )
+            locker_raw = args.get("locker", ZERO_ADDRESS)
+            locker = (
+                Web3.to_checksum_address(locker_raw)
+                if locker_raw and locker_raw != ZERO_ADDRESS
+                else None
+            )
+            mev_module_raw = args.get("mevModule", ZERO_ADDRESS)
+            mev_module = (
+                Web3.to_checksum_address(mev_module_raw)
+                if mev_module_raw and mev_module_raw != ZERO_ADDRESS
+                else None
+            )
+            extensions_supply = args.get("extensionsSupply", 0)
+            extensions_raw = args.get("extensions", [])
+            extensions = [
+                Web3.to_checksum_address(ext)
+                for ext in extensions_raw
+                if ext and ext != ZERO_ADDRESS
+            ]
+
+            context_summary = None
+            if token_context_raw:
+                try:
+                    context_json = json.loads(token_context_raw)
+                    if isinstance(context_json, dict):
+                        summary_items = []
+                        for key in ("platform", "interface", "username", "id"):
+                            if key in context_json and context_json[key]:
+                                summary_items.append(f"{key}: {context_json[key]}")
+                        if summary_items:
+                            context_summary = ", ".join(summary_items)
+                except Exception:
+                    context_summary = None
+
+            def format_address(addr: Optional[str], label: Optional[str] = None) -> str:
+                if not addr:
+                    return "Aucun"
+                base = f"[{addr}](https://basescan.org/address/{addr})"
+                if label:
+                    return f"{base} ({label})"
+                return base
+
+            embed = discord.Embed(
+                title="🪙 Nouveau Token déployé via Fey",
+                description="La factory Fey a déployé un nouveau token sur Base.",
+                color=discord.Color.blurple(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(
+                name="Token",
+                value=f"**{token_name} ({token_symbol})**",
+                inline=False
+            )
+            embed.add_field(
+                name="Contrat",
+                value=f"[{token_address}](https://basescan.org/address/{token_address})",
+                inline=False
+            )
+            embed.add_field(name="Déployeur (msgSender)", value=f"`{msg_sender}`", inline=True)
+            embed.add_field(
+                name="Admin",
+                value=f"`{token_admin}`" if token_admin else "Non communiqué",
+                inline=True
+            )
+            embed.add_field(
+                name="Tick initial",
+                value=str(starting_tick) if starting_tick is not None else "N/A",
+                inline=True
+            )
+
+            hook_label = None
+            if pool_hook and pool_hook.lower() == FEY_HOOK_STATIC_FEE_ADDRESS.lower():
+                hook_label = "FeyHookStaticFeeV2"
+            embed.add_field(
+                name="Hook",
+                value=format_address(pool_hook, hook_label) if pool_hook else "Aucun (deployTokenZeroSupply ?)",
+                inline=False
+            )
+            embed.add_field(
+                name="Token pairé",
+                value=format_address(paired_token),
+                inline=False
+            )
+            embed.add_field(
+                name="Locker",
+                value=format_address(locker),
+                inline=True
+            )
+            embed.add_field(
+                name="Module MEV",
+                value=format_address(mev_module),
+                inline=True
+            )
+            embed.add_field(
+                name="Supply extensions",
+                value=f"{extensions_supply:,}",
+                inline=True
+            )
+
+            if extensions:
+                if len(extensions) > 5:
+                    display_ext = extensions[:5]
+                    remainder = len(extensions) - 5
+                    ext_value = "\n".join(
+                        f"[{ext}](https://basescan.org/address/{ext})" for ext in display_ext
+                    )
+                    ext_value += f"\n… +{remainder} autres"
+                else:
+                    ext_value = "\n".join(
+                        f"[{ext}](https://basescan.org/address/{ext})" for ext in extensions
+                    )
+                embed.add_field(name="Extensions", value=ext_value, inline=False)
+            else:
+                embed.add_field(name="Extensions", value="Aucune", inline=False)
+
+            if pool_id:
+                embed.add_field(name="PoolId", value=f"`0x{pool_id}`", inline=False)
+
+            if token_metadata:
+                embed.add_field(
+                    name="Metadata",
+                    value=token_metadata[:256] + ("…" if len(token_metadata) > 256 else ""),
+                    inline=False
+                )
+            if context_summary:
+                embed.add_field(name="Context", value=context_summary, inline=False)
+            elif token_context_raw:
+                embed.add_field(
+                    name="Context (raw)",
+                    value=token_context_raw[:256] + ("…" if len(token_context_raw) > 256 else ""),
+                    inline=False
+                )
+
+            if token_image:
+                embed.set_thumbnail(url=token_image)
+
+            tx_link = f"https://basescan.org/tx/{tx_hash}"
+            view = discord.ui.View()
+            view.add_item(
+                discord.ui.Button(
+                    style=discord.ButtonStyle.secondary,
+                    label="Token sur Basescan",
+                    url=f"https://basescan.org/address/{token_address}"
+                )
+            )
+            view.add_item(
+                discord.ui.Button(
+                    style=discord.ButtonStyle.secondary,
+                    label="Transaction",
+                    url=tx_link
+                )
+            )
+            if pool_hook:
+                view.add_item(
+                    discord.ui.Button(
+                        style=discord.ButtonStyle.secondary,
+                        label="Hook",
+                        url=f"https://basescan.org/address/{pool_hook}"
+                    )
+                )
+            if paired_token:
+                view.add_item(
+                    discord.ui.Button(
+                        style=discord.ButtonStyle.secondary,
+                        label="Token pairé",
+                        url=f"https://basescan.org/address/{paired_token}"
+                    )
+                )
+
+            embed.add_field(name="Transaction", value=f"[Voir la transaction]({tx_link})", inline=False)
+
+            await channel.send(embed=embed, view=view)
+            logger.info(f"[FEY] Notification envoyée pour {token_name} ({token_symbol}) {token_address}")
+
+            self.seen_tokens.add(token_key)
+            self.tracked_clanker_tokens[token_key] = {
+                "first_seen": time.time(),
+                "alerted": False,
+                "creator_address": msg_sender
+            }
+            logger.info(f"[FEY] Ajout du token {token_address.lower()} à la surveillance volume")
+
+        except Exception as e:
+            logger.error(f"Error handling Fey TokenCreated event: {e}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def testfey(self, ctx):
+        """Simule une alerte Fey pour tester l'intégration."""
+        tx_hash_bytes = bytes.fromhex(
+            "c5f9baf1beaa2a2ed6ce5f5e3b54ad97bf2c3e9d2385b37c479d4102a8f02f21"
+        )
+        fake_event = {
+            "args": AttributeDict(
+                {
+                    "msgSender": "0x1234567890abcdef1234567890ABCDEF12345678",
+                    "tokenAddress": "0xfE0000000000000000000000000000000000FE00",
+                    "tokenAdmin": "0x1111111111111111111111111111111111111111",
+                    "tokenImage": "https://fey.example/token.png",
+                    "tokenName": "Fey Test Token",
+                    "tokenSymbol": "FTEST",
+                    "tokenMetadata": '{"website":"https://fey.example","twitter":"@fey"}',
+                    "tokenContext": '{"platform":"test","interface":"discord","username":"fey_dev","id":"4242"}',
+                    "startingTick": 0,
+                    "poolHook": FEY_HOOK_STATIC_FEE_ADDRESS,
+                    "poolId": bytes.fromhex(
+                        "9f5d8bb0b89cf8051c3a3b0b12db6dc6f0aa53e03796e8f6047d3f417cde9be4"
+                    ),
+                    "pairedToken": "0x4200000000000000000000000000000000000006",  # WETH sur Base
+                    "locker": "0x2222222222222222222222222222222222222222",
+                    "mevModule": "0x3333333333333333333333333333333333333333",
+                    "extensionsSupply": 1000,
+                    "extensions": [
+                        "0x4444444444444444444444444444444444444444",
+                        "0x5555555555555555555555555555555555555555",
+                    ],
+                }
+            ),
+            "transactionHash": tx_hash_bytes,
+        }
+
+        await self._handle_fey_token_created(fake_event, ctx.channel)
+        await ctx.send("✅ Alerte Fey de test envoyée.")
+
     @commands.command()
     async def volume(self, ctx, contract: str):
         """Affiche le volume du token sur 24h, 6h, 1h et 5min via Dexscreener."""
@@ -4254,6 +4578,7 @@ class Bot(commands.Bot):
         # Lancer la tâche d'écoute on-chain
         asyncio.create_task(clanker_monitor.listen_onchain_clanker())
         asyncio.create_task(clanker_monitor.listen_onchain_clanker_v4())
+        asyncio.create_task(clanker_monitor.listen_fey_factory())
 
     async def on_ready(self):
         """Called when the bot is ready."""

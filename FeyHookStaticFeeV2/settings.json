@@ -1,0 +1,57 @@
+{
+	"remappings": [
+		"@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+		"@contracts-bedrock/=lib/optimism/packages/contracts-bedrock/",
+		"@uniswap/v4-core/=lib/v4-core/",
+		"@uniswap/v4-periphery/=lib/v4-periphery/",
+		"@uniswap/universal-router/=lib/universal-router/",
+		"@uniswap/permit2/=lib/permit2/",
+		"uniswap-hooks/=lib/uniswap-hooks/",
+		"v4-core/=lib/v4-core/",
+		"openzeppelin/=lib/openzeppelin-contracts/contracts/",
+		"@ensdomains/=lib/v4-core/node_modules/@ensdomains/",
+		"@uniswap/v2-core/=lib/universal-router/node_modules/@uniswap/v2-core/",
+		"@uniswap/v3-core/=lib/universal-router/node_modules/@uniswap/v3-core/",
+		"@uniswap/v3-periphery/=lib/universal-router/lib/v3-periphery/",
+		"ds-test/=lib/permit2/lib/forge-std/lib/ds-test/src/",
+		"erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+		"forge-gas-snapshot/=lib/permit2/lib/forge-gas-snapshot/src/",
+		"forge-std/=lib/forge-std/src/",
+		"halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
+		"hardhat/=lib/v4-core/node_modules/hardhat/",
+		"kontrol-cheatcodes/=lib/optimism/packages/contracts-bedrock/lib/kontrol-cheatcodes/src/",
+		"lib-keccak/=lib/optimism/packages/contracts-bedrock/lib/lib-keccak/contracts/",
+		"openzeppelin-contracts-upgradeable/=lib/optimism/packages/contracts-bedrock/lib/openzeppelin-contracts-upgradeable/",
+		"openzeppelin-contracts-v5/=lib/optimism/packages/contracts-bedrock/lib/openzeppelin-contracts-v5/",
+		"openzeppelin-contracts/=lib/openzeppelin-contracts/",
+		"optimism/=lib/optimism/",
+		"permit2/=lib/permit2/",
+		"safe-contracts/=lib/optimism/packages/contracts-bedrock/lib/safe-contracts/contracts/",
+		"solady-v0.0.245/=lib/optimism/packages/contracts-bedrock/lib/solady-v0.0.245/src/",
+		"solady/=lib/optimism/packages/contracts-bedrock/lib/solady/",
+		"solmate/=lib/permit2/lib/solmate/",
+		"universal-router/=lib/universal-router/",
+		"v3-periphery/=lib/universal-router/lib/v3-periphery/contracts/",
+		"v4-periphery/=lib/v4-periphery/"
+	],
+	"optimizer": {
+		"enabled": true,
+		"runs": 400
+	},
+	"metadata": {
+		"useLiteralContent": false,
+		"bytecodeHash": "none",
+		"appendCBOR": false
+	},
+	"outputSelection": {
+		"*": {
+			"*": [
+				"evm.bytecode",
+				"evm.deployedBytecode",
+				"abi"
+			]
+		}
+	},
+	"evmVersion": "cancun",
+	"viaIR": true
+}
